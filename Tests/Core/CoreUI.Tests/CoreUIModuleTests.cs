@@ -5,7 +5,7 @@ using Xunit;
 
 namespace CoreUI.Tests;
 
-public sealed class CoreUiModuleTests
+public sealed class CoreUIModuleTests
 {
     [Fact]
     public void UiModule_UsesSharedContractWithoutHostReference()

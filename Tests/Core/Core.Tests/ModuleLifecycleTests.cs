@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Poseidon.Core.Modules;
 using Xunit;
 
 namespace Core.Tests;
@@ -52,6 +53,9 @@ public sealed partial class ModuleRuntimeTests
         Assert.Empty(test.Runtime.Status.Modules);
         Assert.Empty(test.Runtime.Status.Features);
         Assert.Contains(test.Runtime.Status.Diagnostics, d => d.Contains("Rollback failed"));
+        var package = Assert.Single(test.Runtime.Status.Packages);
+        Assert.Equal(PackageState.Failed, package.State);
+        Assert.Contains("restart required", package.Detail);
         Assert.False(await test.Runtime.ReloadAsync());
     }
 

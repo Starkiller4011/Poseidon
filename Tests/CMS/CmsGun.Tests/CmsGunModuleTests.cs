@@ -1,9 +1,9 @@
 using Poseidon.Modules.Gun;
 using Xunit;
 
-namespace Gun.Tests;
+namespace CmsGun.Tests;
 
-public static class GunTestSuite
+public static class CmsGunTestSuite
 {
     public static void RunSmoke()
     {
@@ -12,11 +12,11 @@ public static class GunTestSuite
     }
 }
 
-public sealed class GunModuleTests
+public sealed class CmsGunModuleTests
 {
     [Fact]
-    public void GunModuleId_IsStable()
+    public void CmsGunModuleId_IsStable()
     {
-        GunTestSuite.RunSmoke();
+        CmsGunTestSuite.RunSmoke();
     }
 }

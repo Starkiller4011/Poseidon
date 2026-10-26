@@ -1,9 +1,9 @@
 using Poseidon.Modules.Comms;
 using Xunit;
 
-namespace Comms.Tests;
+namespace CmsComms.Tests;
 
-public static class CommsTestSuite
+public static class CmsCommsTestSuite
 {
     public static void RunSmoke()
     {
@@ -12,11 +12,11 @@ public static class CommsTestSuite
     }
 }
 
-public sealed class CommsModuleTests
+public sealed class CmsCommsModuleTests
 {
     [Fact]
-    public void CommsModuleId_IsStable()
+    public void CmsCommsModuleId_IsStable()
     {
-        CommsTestSuite.RunSmoke();
+        CmsCommsTestSuite.RunSmoke();
     }
 }

@@ -3,9 +3,9 @@ using Poseidon.Modules.Sonar;
 using Poseidon.Tests.Shared;
 using Xunit;
 
-namespace Sonar.Core.Tests;
+namespace CoreSonar.Tests;
 
-public sealed class SonarModuleTests
+public sealed class CoreSonarModuleTests
 {
     // Core.Sonar carries civilian sonar inputs (echo sounder, NDS); CMS.Sonar is a separate module.
     [Fact]

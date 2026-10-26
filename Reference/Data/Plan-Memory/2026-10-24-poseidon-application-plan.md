@@ -22,6 +22,30 @@ chart reading/display, then track ingestion/display and navigation calculations.
 CMS functionality and distributed role/activity coordination are long-term
 backlog work, not prerequisites or parallel deliverables for this milestone.
 
+### Test-first implementation rule
+
+Every future feature or behavioral change starts with executable acceptance
+tests derived from its software requirements:
+
+1. State each requirement as observable behavior, including failure, recovery,
+   concurrency, lifecycle, platform and cleanup cases where applicable.
+2. Add the smallest appropriate test first (contract, unit, integration,
+   aggregate or fixture-backed) and verify that it fails for the missing
+   behavior rather than for test setup.
+3. Implement only enough production behavior to satisfy the requirement while
+   preserving existing tests and architecture boundaries.
+4. Run the focused test during iteration, then the owning project and affected
+   aggregate suites before marking the feature complete.
+5. Record the requirement-to-test mapping and verified evidence in this plan.
+   A passing smoke test, build, or coverage percentage is not a substitute for
+   assertions over the required behavior.
+
+Tests must exercise public behavior whenever practical. White-box seams are
+acceptable for deterministic simulation of operating-system events or failure
+paths, but must not replace end-to-end validation of the user-visible outcome.
+Do not implement a feature first and add tests afterward except for an urgent
+production recovery; in that case, add a reproducing test before the fix.
+
 ### Confirmed architecture decisions (2026-10-24)
 
 The user explicitly confirmed the following boundaries after the initial plan:
@@ -41,8 +65,8 @@ The user explicitly confirmed the following boundaries after the initial plan:
   additions, replacements, and removals must be handled without restarting Core.
 - Modules can explicitly override features supplied by other modules, enabling
   mod-like extensions and hot patches.
-- Windows and Linux are supported target platforms from the outset. macOS is
-  out of scope.
+- Windows, Arch Linux, and RHEL are the supported target platforms from the
+  outset. macOS is out of scope.
 - CoreUI owns UI code; Display owns chart-viewport drawing and feature layers;
   Charts reads chart data and exposes it to Display.
 - Tracks owns track type definitions and the authoritative track manager.
@@ -424,21 +448,23 @@ or enable commands on a console that does not own the activity.
   and trust boundaries are host invariants, not replaceable by ordinary patches.
   Arbitrary binary detours or patching private host methods are not the design.
 
-### Windows and Linux support
+### Windows, Arch Linux, and RHEL support
 
-- Build, publish, and run the same managed application/module contracts on both
-  platforms. Use Avalonia and portable .NET APIs; isolate unavoidable OS/device
+- Build, publish, and run the same managed application/module contracts on
+  Windows and the supported Linux distributions. Use Avalonia and portable
+  .NET APIs; isolate unavoidable OS/device
   integration behind adapters with explicit platform capability diagnostics.
 - Use executable-relative module discovery, portable path APIs, consistent
   filename casing, and package-relative resource resolution. Test case-sensitive
-  Linux filesystems as well as Windows file-locking and rename behavior.
+  Arch Linux and RHEL filesystems as well as Windows file-locking and rename
+  behavior.
 - Package native resources by supported runtime identifier and resolve the
   correct variant. Native library availability is not implied by a managed
   module loading successfully.
 - Verify filesystem watching, shadow copies, file permissions, writable cache/
-  user-data locations, cleanup, and UI lifecycle behavior on both systems.
-- Run build/tests and publish smoke tests on Windows and Linux; include actual
-  GUI smoke coverage on each. Select supported Linux distributions, windowing
+  user-data locations, cleanup, and UI lifecycle behavior on all three targets.
+- Run build/tests and publish smoke tests on Windows, Arch Linux, and RHEL;
+  include actual GUI smoke coverage on each. Select supported Linux windowing
   environments, CPU architectures, and hardware during baseline work.
 - No macOS packages, integration work, or compatibility guarantees are planned.
 
@@ -561,13 +587,13 @@ Do not implement CMS while working on M1.
 
 | Work package | Prerequisite | Deliverables and exit evidence |
 |---|---|---|
-| M1-A: Host and contracts | None | Restore shared types; keep Core as executable and modules as libraries; hot reload/overrides and repeatable packaging; no-module startup; replacement/removal/rollback tests on Windows and Linux; independent core-module tests |
+| M1-A: Host and contracts | None | Restore shared types; keep Core as executable and modules as libraries; hot reload/overrides and repeatable packaging; no-module startup; replacement/removal/rollback tests on Windows, Arch Linux, and RHEL; independent core-module tests |
 | M1-B: UI and viewport | M1-A | CoreUI owns normal UI; Display contributes empty viewport and layer API; UI/Display reload without restarting Core; diagnostics/recovery remain available |
 | M1-C: Chart-data pipeline | M1-A | Audit specifications/resources, pin fixture versions; Charts decodes a real base cell; verify metadata, attributes, topology and malformed-input diagnostics |
 | M1-D: Integrated chart view | M1-B, M1-C | Display draws Charts data; pan/zoom, locked base, overlays, contour slider and feature inspection; demonstrate Charts/Display provider replacement |
 | M1-E: Track pipeline | M1-A; UI integration needs M1-B | Tracks contracts/manager plus AIS/Radar/Sonar adapter boundaries; recorded/simulated observations produce managed tracks and Display updates; lifecycle, resync and reload tests |
 | M1-F: Navigation functions | M1-E | Own-ship state and tested CPA/TCPA; Display annotations; unavailable/stale/degenerate-motion behavior is explicit |
-| M1-G: Integration gate | M1-D, M1-E, M1-F | Windows/Linux publish and smoke tests; actual civilian module suites; dependency, override and hot-reload failure tests across the integrated application |
+| M1-G: Integration gate | M1-D, M1-E, M1-F | Windows/Arch Linux/RHEL publish and smoke tests; actual civilian module suites; dependency, override and hot-reload failure tests across the integrated application |
 
 M1-C and M1-E can proceed independently after M1-A. The M1-G gate requires no
 CMS binaries. Device-specific protocols and hardware integrations are selected
@@ -598,8 +624,9 @@ long-term backlog and do not block core development.
 - Override tests: base provider, compatible patch, explicitly ordered patches,
   ambiguous replacements, cycles, incompatible versions, patch removal and
   fallback. Verify ownership checks still apply after replacement.
-- Run the loader/reload/override scenarios on Windows and Linux, including
-  Windows replacement locks and Linux path casing/permissions. Verify a failed
+- Run the loader/reload/override scenarios on Windows, Arch Linux, and RHEL,
+  including Windows replacement locks and Linux path casing/permissions. Verify
+  a failed
   candidate does not partially publish registrations or lose user state.
 - Chart tests: positive fixture assertions for exact IDs, metadata, geometry,
   nested values and reference resolution; negative tests for malformed records,
@@ -635,7 +662,7 @@ dependent milestones:
 | Decision | Provisional position | Resolve before |
 |---|---|---|
 | Release scope | Initial core application confirmed; agree depth of device integration and follow-on chart update support | M1-G scope review |
-| Platform details | Windows and Linux confirmed; macOS excluded. Select Linux distributions/windowing environments, architectures and hardware | M1-A test/publish matrix |
+| Platform details | Windows, Arch Linux, and RHEL confirmed; macOS excluded. Select Linux windowing environments, architectures and hardware | M1-A test/publish matrix |
 | Product/spec versions | Select from audited available fixtures; no blanket S-100 support | M1-C |
 | Portrayal/certification | Development viewer, not certified ECDIS or operational navigation | Any operational claim |
 | Inputs/protocols | Recorded and simulated observations before live devices; select AIS/Radar/Sonar device protocols separately | M1-E and later device integration |
@@ -647,14 +674,18 @@ dependent milestones:
 ## 10. Next implementation session
 
 1. Re-read this memory and inspect the worktree without overwriting existing work.
-2. Execute M1-A: resolve missing shared types and establish a core-only build/test
+2. Translate the next milestone requirements into named acceptance tests and
+   run them to establish the expected failing baseline before production edits.
+3. Execute M1-A: resolve missing shared types and establish a core-only build/test
    baseline. Convert CoreUI, Display and Core Sonar scaffolds to module libraries.
-3. Decide the minimal shared-contract boundary using existing loader behavior
+4. Decide the minimal shared-contract boundary using existing loader behavior
    and tests; preserve file-drop deployment and implement lifecycle/override
-   contracts early enough to prove hot reload on Windows and Linux in M1-A.
-4. Establish CoreUI/Display boundaries (M1-B), then audit chart fixtures (M1-C)
+   contracts early enough to prove hot reload on Windows, Arch Linux, and RHEL
+   in M1-A.
+5. Establish CoreUI/Display boundaries (M1-B), then audit chart fixtures (M1-C)
    and define Tracks-owned ingestion/feed contracts (M1-E). Do not start CMS.
-5. Update this file with verified milestone results, decisions and next steps.
+6. Run focused, project and aggregate suites, then update this file with the
+   requirement-to-test mapping, verified results, decisions and next steps.
 
 The sections above originated as planning-only documentation. Implementation
 has now started as recorded below.
@@ -685,11 +716,13 @@ has now started as recorded below.
   aggregate now executes every core module test suite, not just smoke helpers.
 - Preserved existing legacy IDs (`CMS.AIS`, `CMS.Tracks`, etc.) for compatibility;
   their names do not introduce dependencies on future CMS functionality.
-- Added Windows/Ubuntu CI build/test jobs and root build/deployment documentation.
+- Added root build/deployment documentation. Windows, Arch Linux, and RHEL are
+  the target validation environments; CI automation remains to be added.
 
 ### Verified evidence
 
-- Windows: core application build succeeds with zero warnings/errors.
+- Windows: core application build succeeds with zero warnings/errors (verified
+  locally on 2026-10-26).
 - Windows: civilian aggregate executes all nine core-module suites successfully.
   Latest run: 31 passing tests in total (22 Core tests, eight other module
   checks and one aggregate smoke check); no failures or skips.
@@ -705,12 +738,12 @@ has now started as recorded below.
 - The collection test exposed a plugin-type serialization cache retaining
   collectible assemblies; the fixture now parses configuration without placing
   its private types into the global JSON metadata cache.
-- Linux execution is not locally verified: WSL/Linux is unavailable on this
-  machine. The CI matrix is configured but has not been run in this session.
+- Arch Linux and RHEL execution are not yet verified. Linux CI automation and
+  Linux desktop smoke tests remain required.
 
 ### Scope and remaining gates
 
-M1-A is **in progress**, not complete on both platforms. The initial design
+M1-A is **in progress**, not complete on all three target platforms. The initial design
 deliberately reloads the entire module generation behind a serialized feature
 barrier. Selective subgraph reload and asynchronous/streaming feature leases are
 not implemented. Removing a required provider while leaving dependents installed
@@ -722,7 +755,7 @@ sensor projects remain functional scaffolds; no chart reader, viewport renderer,
 track manager, CPA/TCPA service or live device interface is claimed.
 Military aggregation/CMS work remains deferred.
 
-Next: verify the Windows/Linux CI results, extend the contract tests and package/
+Next: add and run Windows/Arch Linux/RHEL CI and desktop smoke validation, extend the contract tests and package/
 lifecycle failure coverage as needed, then implement the Display viewport
 contribution boundary (M1-B), chart specification audit (M1-C), and Tracks
 ingestion/change-feed contracts (M1-E).
@@ -748,12 +781,12 @@ track, sensor or navigation functionality:
   host recovery-window visibility/failure reporting.
 - Coverage configuration includes production assemblies and excludes test/
   fixture assemblies. All module projects have the collector needed to run it;
-  Windows/Linux CI now requests coverage.
+  Windows/Arch Linux/RHEL CI should request coverage once CI automation is added.
 
 Tests reproduced and fixed two shutdown defects: stale public module/feature
 status after disposal and inability to retry cleanup after a drain timeout.
 Entry-assembly path validation now rejects both slash conventions consistently
-on Windows and Linux. The recovery window consumes the existing host interface,
+on Windows, Arch Linux, and RHEL. The recovery window consumes the existing host interface,
 rather than depending on the concrete runtime, to make its behavior unit-testable.
 
 Latest Windows aggregate: **142 passing tests**, zero failures/skips, across
@@ -763,7 +796,7 @@ Measured merged line coverage: shared contracts and CoreUI 100%, module graph
 Overall Core assembly coverage is 88.6%; application bootstrap and some
 OS-error/timeout cleanup paths are not covered. Scaffold modules' declaration/
 lifecycle coverage is 100%, which does not imply their future domain behavior
-is implemented. No blanket 100% coverage or Linux execution claim is made.
+is implemented. No blanket 100% coverage or Arch Linux/RHEL execution claim is made.
 
 CMS remains deferred. These changes do not repair or validate its old test
 project paths or add operational CMS behavior. Real desktop smoke tests remain
@@ -825,7 +858,15 @@ Verified 2026-10-24:
   start failure on initial load; Retained last-known-good; any manifest
   ID/version being authoritative; minimum-version dependencies; a missing
   modules directory; and explicit reload retry.
-- Linux is not yet verified.
+- Additional operational requirement tests cover: restaging a retained module
+  from its last-known-good shadow while another module changes; reaping retired
+  shadow directories after collectible contexts are released; periodic
+  reconciliation after watcher events are missed; suppressing automatic retries
+  for unchanged rejected packages while preserving explicit retry; and
+  restart-required package status after unsafe rollback failure. Package
+  fingerprint tests also require rejection of file or directory symbolic links
+  and reparse points without traversing content outside the package boundary.
+- Arch Linux and RHEL are not yet verified.
 
 ## 15. Extension points and contributions (supersedes ModuleIds and `exports`)
 
@@ -878,9 +919,29 @@ module ID is that name with a dot after the group prefix.
   (section 15). Only `CoreUI` contributes so far (`shell.host`); the other core
   modules declare no points yet because their contracts are not defined.
 - `Core.Application.proj` builds the host and deploys each module to
-  `modules/<Directory>`. Test projects keep short names (`AIS.Tests`); the shared
-  test targets map them to `System/Core/Core<Name>/module.json` (`CoreUI.Tests`
-  maps to `CoreUI`). C# namespaces are unchanged (`Poseidon.Modules.<Name>`).
+  `modules/<Directory>`. Core test projects mirror the system names
+  (`CoreAIS.Tests`, `CoreCharts.Tests`, and so on); the shared test targets map
+  each project directly to `System/Core/<SystemName>/module.json`. C# module
+  namespaces remain `Poseidon.Modules.<Name>`.
 - After renaming a module, delete stale `modules/<OldName>` folders in build
   output: an old and a new package with the same module ID are both rejected as
   duplicates.
+
+## 17. Requirement-to-test ledger
+
+Append to this ledger before implementing each new feature. A requirement is
+ready for production work only after its acceptance test exists and has been
+observed failing for the intended missing behavior.
+
+| Requirement | Acceptance test or suite | Verification |
+|---|---|---|
+| A broken deployed package remains available from its last-known-good shadow while another module changes | `BrokenPackage_IsRestagedFromLastKnownGoodShadowDuringAnotherUpdate` in [ModuleOperationalRequirementTests](../../../Tests/Core/Core.Tests/ModuleOperationalRequirementTests.cs) | Passed on Windows, 2026-10-26 |
+| Collectible contexts release their retired shadow directories | `RetiredShadowDirectory_IsReapedAfterItsContextIsCollected` in [ModuleOperationalRequirementTests](../../../Tests/Core/Core.Tests/ModuleOperationalRequirementTests.cs) | Passed on Windows, 2026-10-26 |
+| Periodic reconciliation recovers from missed filesystem watcher events | `PeriodicReconciliation_RecoversWhenWatcherEventsAreMissed` in [ModuleOperationalRequirementTests](../../../Tests/Core/Core.Tests/ModuleOperationalRequirementTests.cs) | Passed on Windows, 2026-10-26 |
+| Automatic reconciliation does not repeatedly restart an unchanged rejected package; explicit reload does | `AutomaticReconciliation_DoesNotRetryAnUnchangedRejectedPackage` in [ModuleOperationalRequirementTests](../../../Tests/Core/Core.Tests/ModuleOperationalRequirementTests.cs) | Passed on Windows, 2026-10-26 |
+| Unsafe rollback withdrawal is visible as a restart-required package failure | `RollbackFailure_WithdrawsProvidersAndRejectsFurtherReloads` in [ModuleLifecycleTests](../../../Tests/Core/Core.Tests/ModuleLifecycleTests.cs) | Passed on Windows, 2026-10-26 |
+| Package fingerprinting rejects file or directory links without traversing outside the package | `Fingerprint_RejectsDirectoryLinksWithoutTraversingThem` in [ModulePackageTests](../../../Tests/Core/Core.Tests/ModulePackageTests.cs) | Test failed against the prior traversal, production traversal was corrected, then passed on Windows, 2026-10-26 |
+
+Current focused evidence (2026-10-26): `Core.Tests` passes 114 tests with no
+failures or skips. Windows build verification is complete; Arch Linux and RHEL
+verification remain required before cross-platform completion is claimed.

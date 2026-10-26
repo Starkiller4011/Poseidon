@@ -1,7 +1,8 @@
 # Poseidon
 
-Modular maritime desktop application targeting .NET 10 and Avalonia on Windows
-and Linux. macOS is outside the supported scope. Development is currently at the
+Modular maritime desktop application targeting .NET 10 and Avalonia on Windows,
+Arch Linux, and RHEL. macOS is outside the supported scope. Development is
+currently at the
 reloadable-host foundation; chart reading/drawing, track management, navigation
 calculations and device adapters are not implemented yet.
 
@@ -46,7 +47,9 @@ shared-contract tests, runtime integration tests, and headless Avalonia UI tests
 rather than only the aggregate smoke fact. Individual module projects can also
 be tested independently. The existing military
 aggregate/CMS scaffolding is deferred and is not the current validation gate.
-Windows and Ubuntu build/test jobs are defined in the core workflow.
+Windows, Arch Linux, and RHEL are the target build/test environments. Windows
+build verification passed locally on 2026-10-26; Linux build and desktop smoke
+verification remain pending.
 
 Collect production-code coverage using the existing Coverlet collector:
 
@@ -58,7 +61,7 @@ Reports are written under each test project's ignored `TestResults` directory.
 The coverage settings exclude test/fixture assemblies, not application code.
 Headless UI tests exercise commands, status updates, close/restart behavior and
 recovery-window visibility without requiring a display server. These complement,
-but do not replace, real Windows/Linux desktop smoke tests.
+but do not replace, real Windows/Arch Linux/RHEL desktop smoke tests.
 
 ## Module deployment and hot reload
 

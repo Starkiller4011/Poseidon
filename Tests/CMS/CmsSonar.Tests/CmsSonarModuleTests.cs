@@ -1,9 +1,9 @@
 using Poseidon.Modules.Sonar;
 using Xunit;
 
-namespace Sonar.Tests;
+namespace CmsSonar.Tests;
 
-public static class SonarTestSuite
+public static class CmsSonarTestSuite
 {
     public static void RunSmoke()
     {
@@ -12,11 +12,11 @@ public static class SonarTestSuite
     }
 }
 
-public sealed class SonarModuleTests
+public sealed class CmsSonarModuleTests
 {
     [Fact]
-    public void SonarModuleId_IsStable()
+    public void CmsSonarModuleId_IsStable()
     {
-        SonarTestSuite.RunSmoke();
+        CmsSonarTestSuite.RunSmoke();
     }
 }

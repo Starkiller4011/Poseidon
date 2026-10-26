@@ -1,9 +1,9 @@
 using Poseidon.Modules.Ew;
 using Xunit;
 
-namespace EW.Tests;
+namespace CmsEW.Tests;
 
-public static class EwTestSuite
+public static class CmsEWTestSuite
 {
     public static void RunSmoke()
     {
@@ -12,11 +12,11 @@ public static class EwTestSuite
     }
 }
 
-public sealed class EwModuleTests
+public sealed class CmsEWModuleTests
 {
     [Fact]
-    public void EwModuleId_IsStable()
+    public void CmsEWModuleId_IsStable()
     {
-        EwTestSuite.RunSmoke();
+        CmsEWTestSuite.RunSmoke();
     }
 }

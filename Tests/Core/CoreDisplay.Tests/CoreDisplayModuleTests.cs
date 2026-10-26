@@ -3,9 +3,9 @@ using Poseidon.Modules.Display;
 using Poseidon.Tests.Shared;
 using Xunit;
 
-namespace Display.Tests;
+namespace CoreDisplay.Tests;
 
-public sealed class DisplayModuleTests
+public sealed class CoreDisplayModuleTests
 {
     [Fact]
     public void DisplayModule_IsIndependentOfHostAndChartImplementation()

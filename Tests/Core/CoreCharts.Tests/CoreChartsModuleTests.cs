@@ -3,9 +3,9 @@ using Poseidon.Modules.Charts;
 using Poseidon.Tests.Shared;
 using Xunit;
 
-namespace Charts.Tests;
+namespace CoreCharts.Tests;
 
-public static class ChartsTestSuite
+public static class CoreChartsTestSuite
 {
     // Identity lives in module.json, so the cross-module smoke check only verifies the entry point.
     public static void RunSmoke()
@@ -15,10 +15,10 @@ public static class ChartsTestSuite
     }
 }
 
-public sealed class ChartsModuleTests
+public sealed class CoreChartsModuleTests
 {
     [Fact]
-    public void EntryPoint_IsConstructible() => ChartsTestSuite.RunSmoke();
+    public void EntryPoint_IsConstructible() => CoreChartsTestSuite.RunSmoke();
 
     [Fact]
     public void Manifest_DeclaresWellKnownId()

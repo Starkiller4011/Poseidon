@@ -1,9 +1,9 @@
 using Poseidon.Modules.Missile;
 using Xunit;
 
-namespace Missile.Tests;
+namespace CmsMissile.Tests;
 
-public static class MissileTestSuite
+public static class CmsMissileTestSuite
 {
     public static void RunSmoke()
     {
@@ -12,11 +12,11 @@ public static class MissileTestSuite
     }
 }
 
-public sealed class MissileModuleTests
+public sealed class CmsMissileModuleTests
 {
     [Fact]
-    public void MissileModuleId_IsStable()
+    public void CmsMissileModuleId_IsStable()
     {
-        MissileTestSuite.RunSmoke();
+        CmsMissileTestSuite.RunSmoke();
     }
 }
