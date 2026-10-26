@@ -743,11 +743,13 @@ has now started as recorded below.
 - The collection test exposed a plugin-type serialization cache retaining
   collectible assemblies; the fixture now parses configuration without placing
   its private types into the global JSON metadata cache.
-- The Arch Linux and RHEL-compatible container jobs are configured but have not
-  yet completed on GitHub. The first run reached both distribution bootstrap
-  steps and exposed invalid dependency package names (`libuuid` on Arch and
+- Arch Linux container job: passed on GitHub (second run, 2026-10-26). The
+  first run exposed invalid dependency package names (`libuuid` on Arch and
   `libunwind` on UBI 9); the package lists were corrected before rerunning.
-  Native Arch Linux/RHEL execution and desktop smoke tests remain required.
+- RHEL-compatible (UBI 9) container job: not yet passing. The second run failed
+  because requesting the full `curl` package conflicts with the preinstalled
+  `curl-minimal`; the RHEL bootstrap now relies on `curl-minimal`.
+- Native Arch Linux/RHEL execution and desktop smoke tests remain required.
 
 ### Scope and remaining gates
 
@@ -957,6 +959,7 @@ observed failing for the intended missing behavior.
 Current focused evidence (2026-10-26): `Core.Tests` passes 114 tests with no
 failures or skips. The local Windows CI-equivalent build, complete solution
 test, coverage, publish and module-staging commands pass. The workflow syntax
-passes `actionlint`. Its Arch Linux and RHEL-compatible container jobs require
-a successful GitHub run, and native Linux desktop verification remains required
-before cross-platform completion is claimed.
+passes `actionlint`. Its Arch Linux container job passes on GitHub; the
+RHEL-compatible container job still requires a successful run, and native Linux
+desktop verification remains required before cross-platform completion is
+claimed.

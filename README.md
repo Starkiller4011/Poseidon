@@ -49,8 +49,9 @@ be tested independently. The existing military
 aggregate/CMS scaffolding is deferred and is not the current validation gate.
 Windows, Arch Linux, and RHEL are the target build/test environments. Windows
 build, test, coverage, publish, and module-staging verification passed locally
-on 2026-10-26. The first remote Arch Linux and RHEL-compatible container runs
-and native Linux desktop smoke verification remain pending.
+on 2026-10-26. The Arch Linux container job passes on GitHub; the
+RHEL-compatible container job and native Linux desktop smoke verification
+remain pending.
 
 Collect production-code coverage using the existing Coverlet collector:
 

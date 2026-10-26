@@ -12,8 +12,9 @@ case "${distribution}" in
       libx11 libxext libxrender libxcb openssl tar util-linux-libs zlib
     ;;
   rhel)
+    # UBI ships curl-minimal, which provides curl and conflicts with the full curl package.
     dnf install --assumeyes \
-      ca-certificates curl fontconfig freetype gzip glibc glibc-langpack-en \
+      ca-certificates fontconfig freetype gzip glibc glibc-langpack-en \
       krb5-libs libgcc libicu libstdc++ libX11 libXext libXrender libxcb \
       openssl-libs tar tzdata zlib
     dnf clean all
