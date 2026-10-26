@@ -9,13 +9,13 @@ case "${distribution}" in
     pacman --sync --refresh --sysupgrade --noconfirm
     pacman --sync --needed --noconfirm \
       ca-certificates curl fontconfig freetype2 gzip icu krb5 libunwind \
-      libuuid libx11 libxext libxrender libxcb openssl tar zlib
+      libx11 libxext libxrender libxcb openssl tar util-linux-libs zlib
     ;;
   rhel)
     dnf install --assumeyes \
-      ca-certificates curl fontconfig freetype gzip glibc-langpack-en \
-      krb5-libs libicu libunwind libuuid libX11 libXext libXrender libxcb \
-      openssl-libs tar zlib
+      ca-certificates curl fontconfig freetype gzip glibc glibc-langpack-en \
+      krb5-libs libgcc libicu libstdc++ libX11 libXext libXrender libxcb \
+      openssl-libs tar tzdata zlib
     dnf clean all
     ;;
   *)
@@ -43,11 +43,17 @@ dotnet restore Poseidon.slnx
 dotnet build Core.Application.proj \
   --configuration Release \
   --no-restore
+test_results_directory="artifacts/test-results/${distribution}"
 dotnet test Poseidon.slnx \
   --configuration Release \
   --no-restore \
   --logger "trx;LogFilePrefix=${distribution}" \
-  --results-directory "artifacts/test-results/${distribution}"
+  --results-directory "${test_results_directory}"
+
+if [[ -z "$(find "${test_results_directory}" -type f -name '*.trx' -print -quit)" ]]; then
+  echo "No TRX test results were produced in ${test_results_directory}." >&2
+  exit 1
+fi
 
 publish_directory="/workspace/artifacts/publish/${distribution}"
 dotnet publish System/Core/Core/Core.csproj \

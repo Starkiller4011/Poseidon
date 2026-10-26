@@ -1,4 +1,4 @@
-name: CI
+name: Cross-Platform Build, Test, and Package
 
 on:
   push:
@@ -104,7 +104,7 @@ jobs:
         with:
           name: ${{ matrix.id }}-test-results
           path: artifacts/test-results/${{ matrix.id }}/**/*.trx
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload application package
         uses: actions/upload-artifact@v4

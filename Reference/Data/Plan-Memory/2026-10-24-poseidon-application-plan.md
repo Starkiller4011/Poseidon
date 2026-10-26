@@ -744,8 +744,10 @@ has now started as recorded below.
   collectible assemblies; the fixture now parses configuration without placing
   its private types into the global JSON metadata cache.
 - The Arch Linux and RHEL-compatible container jobs are configured but have not
-  yet run on GitHub. Native Arch Linux/RHEL execution and desktop smoke tests
-  remain required.
+  yet completed on GitHub. The first run reached both distribution bootstrap
+  steps and exposed invalid dependency package names (`libuuid` on Arch and
+  `libunwind` on UBI 9); the package lists were corrected before rerunning.
+  Native Arch Linux/RHEL execution and desktop smoke tests remain required.
 
 ### Scope and remaining gates
 
@@ -761,8 +763,9 @@ sensor projects remain functional scaffolds; no chart reader, viewport renderer,
 track manager, CPA/TCPA service or live device interface is claimed.
 Military aggregation/CMS work remains deferred.
 
-Next: run the configured CI workflow, resolve any distribution-container
-failures, and add native Arch Linux/RHEL desktop smoke validation. Then extend
+Next: run the Cross-Platform Build, Test, and Package workflow, resolve any
+distribution-container failures, and add native Arch Linux/RHEL desktop smoke
+validation. Then extend
 the contract tests and package/lifecycle failure coverage as needed and
 implement the Display viewport
 contribution boundary (M1-B), chart specification audit (M1-C), and Tracks
