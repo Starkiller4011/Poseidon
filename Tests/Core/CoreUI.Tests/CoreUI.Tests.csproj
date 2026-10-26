@@ -14,5 +14,14 @@
     <PackageReference Include="coverlet.collector" Version="6.0.4" PrivateAssets="all" />
     <ProjectReference Include="..\..\..\System\Core\CoreUI\CoreUI.csproj" />
     <ProjectReference Include="..\..\..\System\Core\Core\Core.csproj" />
+    <ProjectReference Include="..\..\..\System\Core\CoreDisplay\CoreDisplay.csproj" ReferenceOutputAssembly="false" />
+    <None Include="..\..\..\System\Core\CoreDisplay\module.json" Link="packages\CoreDisplay\module.json"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- Real CoreUI/Display packages for runtime integration tests; Display is not a compile-time reference. -->
+  <Target Name="CopyDisplayPackage" AfterTargets="Build">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\..\System\Core\CoreDisplay\bin\$(Configuration)\net10.0\CoreDisplay.dll"
+          DestinationFolder="$(TargetDir)packages\CoreDisplay" />
+  </Target>
 </Project>

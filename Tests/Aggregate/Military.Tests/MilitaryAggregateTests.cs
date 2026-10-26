@@ -1,15 +1,18 @@
-using AIS.Tests;
-using Charts.Tests;
 using CmsCore.Tests;
-using Comms.Tests;
+using CmsComms.Tests;
+using CmsEW.Tests;
+using CmsGun.Tests;
+using CmsMissile.Tests;
+using CmsRadar.Tests;
+using CmsSonar.Tests;
+using CmsTracks.Tests;
+using CmsUI.Tests;
 using Core.Tests;
-using EW.Tests;
-using Gun.Tests;
-using Missile.Tests;
-using Navigation.Tests;
-using Radar.Tests;
-using Sonar.Tests;
-using Tracks.Tests;
+using CoreAIS.Tests;
+using CoreCharts.Tests;
+using CoreNavigation.Tests;
+using CoreRadar.Tests;
+using CoreTracks.Tests;
 using Xunit;
 
 namespace Military.Tests;
@@ -20,16 +23,19 @@ public sealed class MilitaryAggregateTests
     public void MilitarySuite_Runs_AllModuleSmokeTests()
     {
         CoreTestSuite.RunSmoke();
-        ChartsTestSuite.RunSmoke();
-        AisTestSuite.RunSmoke();
-        TracksTestSuite.RunSmoke();
+        CoreChartsTestSuite.RunSmoke();
+        CoreAISTestSuite.RunSmoke();
+        CoreTracksTestSuite.RunSmoke();
         CmsCoreTestSuite.RunSmoke();
-        RadarTestSuite.RunSmoke();
-        SonarTestSuite.RunSmoke();
-        GunTestSuite.RunSmoke();
-        MissileTestSuite.RunSmoke();
-        CommsTestSuite.RunSmoke();
-        NavigationTestSuite.RunSmoke();
-        EwTestSuite.RunSmoke();
+        CoreRadarTestSuite.RunSmoke();
+        CmsRadarTestSuite.RunSmoke();
+        CmsSonarTestSuite.RunSmoke();
+        CmsGunTestSuite.RunSmoke();
+        CmsMissileTestSuite.RunSmoke();
+        CmsCommsTestSuite.RunSmoke();
+        CmsTracksTestSuite.RunSmoke();
+        CmsUITestSuite.RunSmoke();
+        CoreNavigationTestSuite.RunSmoke();
+        CmsEWTestSuite.RunSmoke();
     }
 }

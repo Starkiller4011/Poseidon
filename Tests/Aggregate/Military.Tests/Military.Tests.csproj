@@ -23,17 +23,20 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\Core.Tests\Core.Tests.csproj" />
-    <ProjectReference Include="..\..\Core\Charts.Tests\Charts.Tests.csproj" />
-    <ProjectReference Include="..\..\Core\AIS.Tests\AIS.Tests.csproj" />
-    <ProjectReference Include="..\..\Core\Tracks.Tests\Tracks.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\CoreCharts.Tests\CoreCharts.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\CoreAIS.Tests\CoreAIS.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\CoreTracks.Tests\CoreTracks.Tests.csproj" />
     <ProjectReference Include="..\..\CMS\CmsCore.Tests\CmsCore.Tests.csproj" />
-    <ProjectReference Include="..\..\Core\Radar.Tests\Radar.Tests.csproj" />
-    <ProjectReference Include="..\..\CMS\Sonar.Tests\Sonar.Tests.csproj" />
-    <ProjectReference Include="..\..\CMS\Gun.Tests\Gun.Tests.csproj" />
-    <ProjectReference Include="..\..\CMS\Missile.Tests\Missile.Tests.csproj" />
-    <ProjectReference Include="..\..\CMS\Comms.Tests\Comms.Tests.csproj" />
-    <ProjectReference Include="..\..\Core\Navigation.Tests\Navigation.Tests.csproj" />
-    <ProjectReference Include="..\..\CMS\EW.Tests\EW.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\CoreRadar.Tests\CoreRadar.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\CmsRadar.Tests\CmsRadar.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\CmsSonar.Tests\CmsSonar.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\CmsGun.Tests\CmsGun.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\CmsMissile.Tests\CmsMissile.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\CmsComms.Tests\CmsComms.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\CmsTracks.Tests\CmsTracks.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\CmsUI.Tests\CmsUI.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\CoreNavigation.Tests\CoreNavigation.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\CmsEW.Tests\CmsEW.Tests.csproj" />
   </ItemGroup>
 
 </Project>

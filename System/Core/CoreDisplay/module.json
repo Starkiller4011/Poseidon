@@ -1,5 +1,14 @@
 {
   "id": "Core.Display",
   "version": "0.0.1",
-  "entryAssembly": "CoreDisplay.dll"
+  "entryAssembly": "CoreDisplay.dll",
+  "provides": [
+    {
+      "id": "display.viewport", "version": "1.0.0", "cardinality": "single",
+      "contract": "Poseidon.Core.Modules.IChartViewport"
+    }
+  ],
+  "contributions": [
+    { "point": "display.viewport", "id": "core.display.viewport", "version": "1.0.0" }
+  ]
 }

@@ -101,6 +101,11 @@ public sealed class ModuleContractTests
             new ModuleDependency { Id = "base", Version = required }.IsSatisfiedBy(Version.Parse(installed)));
 
     [Fact]
+    public void Contracts_DoNotReferenceAUiFramework()
+        => Assert.DoesNotContain(typeof(IModule).Assembly.GetReferencedAssemblies(),
+            a => a.Name!.StartsWith("Avalonia", StringComparison.Ordinal));
+
+    [Fact]
     public void Capability_PreservesStableIdAndDisplayName()
     {
         var capability = new ModuleCapability("charts.display", "Chart Display");
