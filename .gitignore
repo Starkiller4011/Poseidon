@@ -1,0 +1,20 @@
+.vs
+.vscode
+
+# Build outputs
+[Bb]in/
+[Oo]bj/
+[Aa]rtifacts/
+[Tt]estResults/
+
+# Visual Studio user files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build and debug artifacts
+*.dll
+*.exe
+*.pdb
+*.cache
