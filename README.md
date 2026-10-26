@@ -48,8 +48,9 @@ rather than only the aggregate smoke fact. Individual module projects can also
 be tested independently. The existing military
 aggregate/CMS scaffolding is deferred and is not the current validation gate.
 Windows, Arch Linux, and RHEL are the target build/test environments. Windows
-build verification passed locally on 2026-10-26; Linux build and desktop smoke
-verification remain pending.
+build, test, coverage, publish, and module-staging verification passed locally
+on 2026-10-26. The first remote Arch Linux and RHEL-compatible container runs
+and native Linux desktop smoke verification remain pending.
 
 Collect production-code coverage using the existing Coverlet collector:
 
@@ -62,6 +63,24 @@ The coverage settings exclude test/fixture assemblies, not application code.
 Headless UI tests exercise commands, status updates, close/restart behavior and
 recovery-window visibility without requiring a display server. These complement,
 but do not replace, real Windows/Arch Linux/RHEL desktop smoke tests.
+
+## Continuous integration
+
+The [CI workflow](.github/workflows/ci.yml) runs for pushes, pull requests, and
+manual dispatches. It provides:
+
+- a native GitHub-hosted Windows build, full solution test run, civilian
+  coverage collection, and packaged application artifact;
+- an Arch Linux container build, full solution test run, and packaged
+  application artifact; and
+- a Red Hat UBI 9 container build, full solution test run, and packaged
+  application artifact as the initial RHEL-compatible gate.
+
+The Linux container jobs use [.github/scripts/ci-linux.sh](.github/scripts/ci-linux.sh)
+to install the .NET 10 SDK and distribution dependencies consistently. They
+validate managed behavior, case-sensitive paths, packaging, and Linux runtime
+dependencies, but they are not native-distribution GUI certification. Native
+Arch Linux and RHEL runners with real desktop smoke tests remain an M1 gate.
 
 ## Module deployment and hot reload
 

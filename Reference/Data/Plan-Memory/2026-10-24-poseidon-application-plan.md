@@ -716,13 +716,18 @@ has now started as recorded below.
   aggregate now executes every core module test suite, not just smoke helpers.
 - Preserved existing legacy IDs (`CMS.AIS`, `CMS.Tracks`, etc.) for compatibility;
   their names do not introduce dependencies on future CMS functionality.
-- Added root build/deployment documentation. Windows, Arch Linux, and RHEL are
-  the target validation environments; CI automation remains to be added.
+- Added root build/deployment documentation and a GitHub Actions workflow for
+  pushes, pull requests and manual dispatches. It runs a native Windows build,
+  full solution tests, civilian coverage and packaging, plus Arch Linux and
+  Red Hat UBI 9 container build/test/package jobs. UBI 9 is the initial
+  RHEL-compatible gate, not a substitute for native RHEL desktop validation.
 
 ### Verified evidence
 
 - Windows: core application build succeeds with zero warnings/errors (verified
   locally on 2026-10-26).
+- Windows: the exact CI restore, Release build, full-solution test, civilian
+  coverage, host publish and eight-module staging commands pass locally.
 - Windows: civilian aggregate executes all nine core-module suites successfully.
   Latest run: 31 passing tests in total (22 Core tests, eight other module
   checks and one aggregate smoke check); no failures or skips.
@@ -738,8 +743,9 @@ has now started as recorded below.
 - The collection test exposed a plugin-type serialization cache retaining
   collectible assemblies; the fixture now parses configuration without placing
   its private types into the global JSON metadata cache.
-- Arch Linux and RHEL execution are not yet verified. Linux CI automation and
-  Linux desktop smoke tests remain required.
+- The Arch Linux and RHEL-compatible container jobs are configured but have not
+  yet run on GitHub. Native Arch Linux/RHEL execution and desktop smoke tests
+  remain required.
 
 ### Scope and remaining gates
 
@@ -755,8 +761,10 @@ sensor projects remain functional scaffolds; no chart reader, viewport renderer,
 track manager, CPA/TCPA service or live device interface is claimed.
 Military aggregation/CMS work remains deferred.
 
-Next: add and run Windows/Arch Linux/RHEL CI and desktop smoke validation, extend the contract tests and package/
-lifecycle failure coverage as needed, then implement the Display viewport
+Next: run the configured CI workflow, resolve any distribution-container
+failures, and add native Arch Linux/RHEL desktop smoke validation. Then extend
+the contract tests and package/lifecycle failure coverage as needed and
+implement the Display viewport
 contribution boundary (M1-B), chart specification audit (M1-C), and Tracks
 ingestion/change-feed contracts (M1-E).
 
@@ -781,7 +789,8 @@ track, sensor or navigation functionality:
   host recovery-window visibility/failure reporting.
 - Coverage configuration includes production assemblies and excludes test/
   fixture assemblies. All module projects have the collector needed to run it;
-  Windows/Arch Linux/RHEL CI should request coverage once CI automation is added.
+  Windows CI requests coverage. Arch Linux and RHEL-compatible jobs run the
+  complete test solution and retain their TRX results.
 
 Tests reproduced and fixed two shutdown defects: stale public module/feature
 status after disposal and inability to retry cleanup after a drain timeout.
@@ -943,5 +952,8 @@ observed failing for the intended missing behavior.
 | Package fingerprinting rejects file or directory links without traversing outside the package | `Fingerprint_RejectsDirectoryLinksWithoutTraversingThem` in [ModulePackageTests](../../../Tests/Core/Core.Tests/ModulePackageTests.cs) | Test failed against the prior traversal, production traversal was corrected, then passed on Windows, 2026-10-26 |
 
 Current focused evidence (2026-10-26): `Core.Tests` passes 114 tests with no
-failures or skips. Windows build verification is complete; Arch Linux and RHEL
-verification remain required before cross-platform completion is claimed.
+failures or skips. The local Windows CI-equivalent build, complete solution
+test, coverage, publish and module-staging commands pass. The workflow syntax
+passes `actionlint`. Its Arch Linux and RHEL-compatible container jobs require
+a successful GitHub run, and native Linux desktop verification remains required
+before cross-platform completion is claimed.
