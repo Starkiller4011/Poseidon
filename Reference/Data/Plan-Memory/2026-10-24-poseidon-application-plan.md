@@ -2,8 +2,10 @@
 
 Date: 2026-10-24  
 Status: Confirmed application/module boundaries with a proposed implementation
-roadmap; host foundation implementation started. See section 11 for verified
-progress and remaining work; this is not a certification claim.
+roadmap. M1-A (host foundation) is complete for its automated cross-platform
+gate; M1-B (CoreUI/Display viewport boundary) is implemented and verified on
+Windows, pending its cross-platform CI run (section 18). See section 11 for
+verified progress and remaining work; this is not a certification claim.
 
 ## 1. Resume context
 
@@ -593,7 +595,7 @@ Do not implement CMS while working on M1.
 | M1-D: Integrated chart view | M1-B, M1-C | Display draws Charts data; pan/zoom, locked base, overlays, contour slider and feature inspection; demonstrate Charts/Display provider replacement |
 | M1-E: Track pipeline | M1-A; UI integration needs M1-B | Tracks contracts/manager plus AIS/Radar/Sonar adapter boundaries; recorded/simulated observations produce managed tracks and Display updates; lifecycle, resync and reload tests |
 | M1-F: Navigation functions | M1-E | Own-ship state and tested CPA/TCPA; Display annotations; unavailable/stale/degenerate-motion behavior is explicit |
-| M1-G: Integration gate | M1-D, M1-E, M1-F | Windows/Arch Linux/RHEL publish and smoke tests; actual civilian module suites; dependency, override and hot-reload failure tests across the integrated application |
+| M1-G: Integration gate | M1-D, M1-E, M1-F | Windows/Arch Linux/RHEL publish and native desktop smoke tests (RHEL with SELinux enforcing); actual civilian module suites; dependency, override and hot-reload failure tests across the integrated application |
 
 M1-C and M1-E can proceed independently after M1-A. The M1-G gate requires no
 CMS binaries. Device-specific protocols and hardware integrations are selected
@@ -743,35 +745,45 @@ has now started as recorded below.
 - The collection test exposed a plugin-type serialization cache retaining
   collectible assemblies; the fixture now parses configuration without placing
   its private types into the global JSON metadata cache.
-- Arch Linux container job: passed on GitHub (second run, 2026-10-26). The
-  first run exposed invalid dependency package names (`libuuid` on Arch and
-  `libunwind` on UBI 9); the package lists were corrected before rerunning.
-- RHEL-compatible (UBI 9) container job: not yet passing. The second run failed
-  because requesting the full `curl` package conflicts with the preinstalled
-  `curl-minimal`; the RHEL bootstrap now relies on `curl-minimal`.
-- Native Arch Linux/RHEL execution and desktop smoke tests remain required.
+- Cross-platform CI: GitHub Actions run
+  [40315088820](https://github.com/Starkiller4011/Poseidon/actions/runs/40315088820)
+  (workflow run #2, commit `ba840d2`, 2026-10-26) passed all four jobs: Windows
+  build/test/coverage, Arch Linux container, RHEL 9 compatible (UBI 9)
+  container, and Windows package. Each platform passed the complete solution:
+  213 distinct tests across 21 test projects (Contracts 14, Core runtime 114,
+  CoreUI 20, other Core modules 54, CMS 9, aggregates 2) with no failures or
+  skips, using .NET SDK 10.0.403 / runtime 10.0.14 on Linux. Each Linux job
+  also published the host and staged all eight modules; package, TRX and
+  coverage artifacts were uploaded.
+- Earlier CI runs failed only in distribution bootstrap (no product failures):
+  invalid package names (`libuuid` on Arch, `libunwind` on UBI 9), then a
+  `curl` versus preinstalled `curl-minimal` conflict on UBI 9.
+- Container jobs do not cover SELinux enforcement, a real display server or
+  desktop environment. Native Arch Linux/RHEL desktop smoke tests are moved to
+  the M1-G integration gate.
 
 ### Scope and remaining gates
 
-M1-A is **in progress**, not complete on all three target platforms. The initial design
+M1-A is **complete** for its automated gate (2026-10-26): the host, contracts,
+hot reload/overrides, packaging and replacement/removal/rollback tests pass on
+Windows, Arch Linux and RHEL-compatible CI. Native Linux desktop smoke testing
+is deferred to M1-G by decision, not omitted. The initial design
 deliberately reloads the entire module generation behind a serialized feature
 barrier. Selective subgraph reload and asynchronous/streaming feature leases are
 not implemented. Removing a required provider while leaving dependents installed
 rejects the candidate graph rather than automatically blocking only those
-dependents. Version constraints currently match exact versions.
+dependents. These are accepted, documented limitations rather than open M1-A
+gates. Dependency versions use minimum-within-major matching (section 14).
 
-CoreUI supplies a diagnostics shell only. Display/Charts/Navigation/Tracks and
+CoreUI supplied a diagnostics shell only at this point (M1-B later added the
+hosted viewport; section 18). Display/Charts/Navigation/Tracks and
 sensor projects remain functional scaffolds; no chart reader, viewport renderer,
 track manager, CPA/TCPA service or live device interface is claimed.
 Military aggregation/CMS work remains deferred.
 
-Next: run the Cross-Platform Build, Test, and Package workflow, resolve any
-distribution-container failures, and add native Arch Linux/RHEL desktop smoke
-validation. Then extend
-the contract tests and package/lifecycle failure coverage as needed and
-implement the Display viewport
-contribution boundary (M1-B), chart specification audit (M1-C), and Tracks
-ingestion/change-feed contracts (M1-E).
+Next: M1-B (CoreUI/Display viewport boundary), starting with failing
+acceptance tests per the test-first rule; see section 18. Then the chart
+specification audit (M1-C) and Tracks ingestion/change-feed contracts (M1-E).
 
 ## 12. Foundation test expansion
 
@@ -930,8 +942,9 @@ module ID is that name with a dot after the group prefix.
   `CmsTracks`, `CmsUI`). They have no manifests yet; CMS remains deferred.
 - The `module.json` next to each project holds the ID, version, `entryAssembly`
   (`<Directory>.dll`), dependencies, and any `provides`/`contributions`
-  (section 15). Only `CoreUI` contributes so far (`shell.host`); the other core
-  modules declare no points yet because their contracts are not defined.
+  (section 15). `CoreUI` contributes `shell.host`, and `CoreDisplay` declares
+  `display.viewport` and contributes its viewport to it (section 18); the other
+  core modules declare no points yet because their contracts are not defined.
 - `Core.Application.proj` builds the host and deploys each module to
   `modules/<Directory>`. Core test projects mirror the system names
   (`CoreAIS.Tests`, `CoreCharts.Tests`, and so on); the shared test targets map
@@ -949,17 +962,99 @@ observed failing for the intended missing behavior.
 
 | Requirement | Acceptance test or suite | Verification |
 |---|---|---|
-| A broken deployed package remains available from its last-known-good shadow while another module changes | `BrokenPackage_IsRestagedFromLastKnownGoodShadowDuringAnotherUpdate` in [ModuleOperationalRequirementTests](../../../Tests/Core/Core.Tests/ModuleOperationalRequirementTests.cs) | Passed on Windows, 2026-10-26 |
-| Collectible contexts release their retired shadow directories | `RetiredShadowDirectory_IsReapedAfterItsContextIsCollected` in [ModuleOperationalRequirementTests](../../../Tests/Core/Core.Tests/ModuleOperationalRequirementTests.cs) | Passed on Windows, 2026-10-26 |
-| Periodic reconciliation recovers from missed filesystem watcher events | `PeriodicReconciliation_RecoversWhenWatcherEventsAreMissed` in [ModuleOperationalRequirementTests](../../../Tests/Core/Core.Tests/ModuleOperationalRequirementTests.cs) | Passed on Windows, 2026-10-26 |
-| Automatic reconciliation does not repeatedly restart an unchanged rejected package; explicit reload does | `AutomaticReconciliation_DoesNotRetryAnUnchangedRejectedPackage` in [ModuleOperationalRequirementTests](../../../Tests/Core/Core.Tests/ModuleOperationalRequirementTests.cs) | Passed on Windows, 2026-10-26 |
-| Unsafe rollback withdrawal is visible as a restart-required package failure | `RollbackFailure_WithdrawsProvidersAndRejectsFurtherReloads` in [ModuleLifecycleTests](../../../Tests/Core/Core.Tests/ModuleLifecycleTests.cs) | Passed on Windows, 2026-10-26 |
-| Package fingerprinting rejects file or directory links without traversing outside the package | `Fingerprint_RejectsDirectoryLinksWithoutTraversingThem` in [ModulePackageTests](../../../Tests/Core/Core.Tests/ModulePackageTests.cs) | Test failed against the prior traversal, production traversal was corrected, then passed on Windows, 2026-10-26 |
+| A broken deployed package remains available from its last-known-good shadow while another module changes | `BrokenPackage_IsRestagedFromLastKnownGoodShadowDuringAnotherUpdate` in [ModuleOperationalRequirementTests](../../../Tests/Core/Core.Tests/ModuleOperationalRequirementTests.cs) | Passed on Windows, 2026-10-26; passed on Windows, Arch Linux and RHEL-compatible CI run 40315088820 |
+| Collectible contexts release their retired shadow directories | `RetiredShadowDirectory_IsReapedAfterItsContextIsCollected` in [ModuleOperationalRequirementTests](../../../Tests/Core/Core.Tests/ModuleOperationalRequirementTests.cs) | Passed on Windows, 2026-10-26; passed on Windows, Arch Linux and RHEL-compatible CI run 40315088820 |
+| Periodic reconciliation recovers from missed filesystem watcher events | `PeriodicReconciliation_RecoversWhenWatcherEventsAreMissed` in [ModuleOperationalRequirementTests](../../../Tests/Core/Core.Tests/ModuleOperationalRequirementTests.cs) | Passed on Windows, 2026-10-26; passed on Windows, Arch Linux and RHEL-compatible CI run 40315088820 |
+| Automatic reconciliation does not repeatedly restart an unchanged rejected package; explicit reload does | `AutomaticReconciliation_DoesNotRetryAnUnchangedRejectedPackage` in [ModuleOperationalRequirementTests](../../../Tests/Core/Core.Tests/ModuleOperationalRequirementTests.cs) | Passed on Windows, 2026-10-26; passed on Windows, Arch Linux and RHEL-compatible CI run 40315088820 |
+| Unsafe rollback withdrawal is visible as a restart-required package failure | `RollbackFailure_WithdrawsProvidersAndRejectsFurtherReloads` in [ModuleLifecycleTests](../../../Tests/Core/Core.Tests/ModuleLifecycleTests.cs) | Passed on Windows, 2026-10-26; passed on Windows, Arch Linux and RHEL-compatible CI run 40315088820 |
+| Package fingerprinting rejects file or directory links without traversing outside the package | `Fingerprint_RejectsDirectoryLinksWithoutTraversingThem` in [ModulePackageTests](../../../Tests/Core/Core.Tests/ModulePackageTests.cs) | Test failed against the prior traversal, production traversal was corrected, then passed on Windows, 2026-10-26; passed on Windows, Arch Linux and RHEL-compatible CI run 40315088820 |
+| M1-B B1: Display declares `display.viewport` backed by `IChartViewport` and contributes its viewport | `Manifest_DeclaresSingleViewportPointBackedByTheSharedContract` in [ViewportTests](../../../Tests/Core/CoreDisplay.Tests/ViewportTests.cs) | Failed before implementation (missing behavior), then passed on Windows, 2026-10-26 |
+| M1-B B2: Display is Active and provides the viewport without CoreUI | `Display_IsActiveAndProvidesTheViewportWithoutCoreUi` in [ShellViewportIntegrationTests](../../../Tests/Core/CoreUI.Tests/ShellViewportIntegrationTests.cs) | Failed before implementation (missing behavior), then passed on Windows, 2026-10-26 |
+| M1-B B3: Locked base layer; overlays stack above it and toggle; unknown, duplicate or second base layers are rejected | `Viewport_StartsWithOnlyTheLockedBaseLayer`, `BaseLayer_CannotBeHidden`, `Overlays_StackAboveTheBaseAndToggle`, `UnknownDuplicateOrSecondBaseLayers_AreRejected` in [ViewportTests](../../../Tests/Core/CoreDisplay.Tests/ViewportTests.cs) | Failed before implementation (missing behavior), then passed on Windows, 2026-10-26 |
+| M1-B B4: A new empty view per request with an explicit no-chart-data state, UI thread only | `CreateView_ReturnsANewEmptyViewWithAnExplicitNoChartDataState`, `CreateView_RejectsCallsOffTheUiThread` in [ViewportTests](../../../Tests/Core/CoreDisplay.Tests/ViewportTests.cs) | Failed before implementation (missing behavior), then passed on Windows, 2026-10-26 |
+| M1-B B5: CoreUI hosts the effective viewport next to diagnostics and requests it once | `HostsTheEffectiveViewportNextToDiagnosticsAndRequestsItOnce` in [ShellViewportTests](../../../Tests/Core/CoreUI.Tests/ShellViewportTests.cs) | Failed before implementation (missing behavior), then passed on Windows, 2026-10-26 |
+| M1-B B6: Without a provider CoreUI shows an unavailable state and keeps diagnostics and commands | `WithoutAViewportProvider_ShowsUnavailableStateAndKeepsDiagnosticsAndCommands` in [ShellViewportTests](../../../Tests/Core/CoreUI.Tests/ShellViewportTests.cs) | Failed before implementation (missing behavior), then passed on Windows, 2026-10-26 |
+| M1-B B7: CoreUI detaches a removed provider's view and attaches a replacement | `DetachesARemovedProviderAndAttachesItsReplacement` in [ShellViewportTests](../../../Tests/Core/CoreUI.Tests/ShellViewportTests.cs) | Failed before implementation (missing behavior), then passed on Windows, 2026-10-26 |
+| M1-B B8: A failing provider is reported once without removing diagnostics | `AFailingProviderIsReportedOnceWithoutRemovingDiagnostics` in [ShellViewportTests](../../../Tests/Core/CoreUI.Tests/ShellViewportTests.cs) | Failed before implementation (missing behavior), then passed on Windows, 2026-10-26 |
+| M1-B B9: CoreUI releases the hosted view when stopped | `Stop_ReleasesTheHostedView` in [ShellViewportTests](../../../Tests/Core/CoreUI.Tests/ShellViewportTests.cs) | Failed before implementation (missing behavior), then passed on Windows, 2026-10-26 |
+| M1-B B10: Real runtime shows Display's viewport in CoreUI and falls back after Display is removed, without restarting Core | `CoreUi_HostsDisplaysViewportAndFallsBackWhenDisplayIsRemoved` in [ShellViewportIntegrationTests](../../../Tests/Core/CoreUI.Tests/ShellViewportIntegrationTests.cs) | Failed before implementation (missing behavior), then passed on Windows, 2026-10-26 |
+| M1-B B11: A module contributing to its own declared point is Active and reported on that point | `ModuleContributingToItsOwnPoint_IsActiveAndReportedOnThatPoint` in [ModuleContributionTests](../../../Tests/Core/Core.Tests/ModuleContributionTests.cs) | Guards existing runtime behavior: passed before and after, Windows, 2026-10-26 |
+| M1-B B12: `Poseidon.Contracts` has no UI-framework reference | `Contracts_DoNotReferenceAUiFramework` in [ModuleContractTests](../../../Tests/Shared/Contracts.Tests/ModuleContractTests.cs) | Guards existing design: passed before and after, Windows, 2026-10-26 |
 
 Current focused evidence (2026-10-26): `Core.Tests` passes 114 tests with no
-failures or skips. The local Windows CI-equivalent build, complete solution
-test, coverage, publish and module-staging commands pass. The workflow syntax
-passes `actionlint`. Its Arch Linux container job passes on GitHub; the
-RHEL-compatible container job still requires a successful run, and native Linux
-desktop verification remains required before cross-platform completion is
-claimed.
+failures or skips locally and in CI run 40315088820 on Windows, Arch Linux and
+RHEL-compatible containers, together with the complete 213-test solution,
+civilian coverage, publish and module staging. Native Linux desktop
+verification is an M1-G gate.
+
+M1-B evidence (2026-10-26, Windows): the twelve M1-B rows above pass. The
+Release application build has zero warnings/errors, and the complete solution
+passes with 229 distinct tests (Contracts 15, Core runtime 115, CoreUI 27,
+CoreDisplay 14, other Core modules 47, CMS 9, aggregates 2) and no failures or
+skips. The timing-dependent viewport tests passed in three repeated runs. A
+Release desktop launch with the packaged Display manifest ran for 10 seconds
+without errors. Arch Linux and RHEL-compatible CI for these tests is pending
+the next pull-request run.
+
+## 18. M1-B: CoreUI/Display viewport boundary
+
+Started 2026-10-26 after the M1-A automated gate passed. Requirements were
+written as acceptance tests before production code (section 1 rule).
+
+### Design decisions (assumed; confirm or revise)
+
+- **Display owns the point.** Display declares `display.viewport`
+  (`single` cardinality, contract `IChartViewport`, version 1.0.0) and
+  contributes `core.display.viewport` to it. A contribution to a point nobody
+  provides blocks its whole package, so if CoreUI owned the point Display would
+  be blocked without CoreUI, violating "CoreUI and Display must not depend on
+  each other". A `single` point still allows a deliberate `replaces` override.
+- **CoreUI discovers, never references.** CoreUI finds the effective
+  contribution on `display.viewport` in `RuntimeStatus.Features` and obtains a
+  view through `IModuleHost.InvokeAsync`. Feature calls are rejected inside
+  lifecycle methods, so CoreUI attaches the viewport from its status refresh,
+  not from `StartAsync`. It shows an explicit unavailable state when no
+  provider exists or the provider fails, and does not retry a failed provider
+  until the provider or generation changes (same policy as package retries).
+- **Contracts stay UI-framework independent.** `IChartViewport.CreateView()`
+  returns `object` (an Avalonia control created on the UI thread). This keeps
+  `Poseidon.Contracts` free of Avalonia, which Charts, Tracks and Navigation
+  also reference. A typed, separately shared UI-contract assembly would need
+  loader and graph changes; reconsider it when typed UI contracts multiply.
+- **View lifetime.** The view is the one sanctioned exception to "do not return
+  plugin instances" from `InvokeAsync`: CoreUI owns the returned control and
+  releases it on detach and on stop. Whole-generation reload stops CoreUI, so
+  no window keeps a retired Display context alive.
+- **Layer API scope.** Display keeps an ordered layer stack: a locked base
+  layer (land and coastline) that cannot be hidden, and toggleable overlays
+  stacked above it. Layer contribution by other modules, drawing primitives,
+  the contour slider and preserving layer visibility across reload are M1-D
+  work, specified with their first real layer producer.
+
+### Requirements
+
+| ID | Requirement |
+|---|---|
+| B1 | Display declares `display.viewport` backed by the shared `IChartViewport` contract and contributes its viewport to it |
+| B2 | Display loads and is Active without CoreUI (no CoreUI/Display dependency in either direction) |
+| B3 | Display's viewport starts with only the locked base layer; the base cannot be hidden; overlays stack above it and toggle; unknown or duplicate layer IDs are rejected |
+| B4 | Display creates a new, empty view per request, with an explicit "no chart data" state, only on the UI thread |
+| B5 | CoreUI hosts the effective viewport contribution next to its diagnostics |
+| B6 | Without a viewport provider, CoreUI shows an explicit unavailable state and keeps diagnostics and recovery commands |
+| B7 | CoreUI detaches the view when the provider disappears and attaches a replacement provider's view |
+| B8 | A failing viewport provider is reported once in the UI and does not remove diagnostics |
+| B9 | CoreUI releases the hosted view when stopped |
+| B10 | With the real runtime, deployed CoreUI and Display packages show Display's viewport in the CoreUI window; removing Display and reloading falls back to the unavailable state without restarting Core |
+| B11 | A module contributing to its own declared point is accepted and reported on that point |
+| B12 | `Poseidon.Contracts` stays free of UI-framework references |
+
+### Status
+
+Implemented and verified on Windows (see the section 17 ledger rows B1–B12).
+M1-B is complete once the next pull-request CI run passes on Windows, Arch
+Linux and RHEL-compatible containers. The M1-B exit criteria are met as
+follows: CoreUI owns the normal UI and hosts the viewport (B5, B6); Display
+contributes an empty viewport and layer API (B1, B3, B4); UI and Display reload
+without restarting Core (B7, B10); diagnostics and recovery remain available
+(B6, B8). Next: M1-C (chart specification/resource audit) and the M1-E Tracks
+contracts, each starting with failing acceptance tests.

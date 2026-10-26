@@ -18,8 +18,9 @@ dotnet run --project System/Core/Core/Core.csproj --no-build
 
 Core remains the sole application executable. The build orchestration deploys
 the eight core modules into the host output's `modules` directory; Core has no
-project reference to those implementations. CoreUI supplies the normal window;
-the host retains a small recovery window if CoreUI is missing or fails.
+project reference to those implementations. CoreUI supplies the normal window,
+which hosts Display's chart viewport next to the module diagnostics; the host
+retains a small recovery window if CoreUI is missing or fails.
 At startup, Core shows a borderless black splash with centered bold white
 "Poseidon" text while discovering and loading modules. The splash closes when
 initial loading completes; missing or failed CoreUI falls back to recovery.
@@ -47,11 +48,10 @@ shared-contract tests, runtime integration tests, and headless Avalonia UI tests
 rather than only the aggregate smoke fact. Individual module projects can also
 be tested independently. The existing military
 aggregate/CMS scaffolding is deferred and is not the current validation gate.
-Windows, Arch Linux, and RHEL are the target build/test environments. Windows
-build, test, coverage, publish, and module-staging verification passed locally
-on 2026-10-26. The Arch Linux container job passes on GitHub; the
-RHEL-compatible container job and native Linux desktop smoke verification
-remain pending.
+Windows, Arch Linux, and RHEL are the target build/test environments. The full
+solution builds, tests, publishes, and stages modules on all three in CI
+(Windows natively; Arch Linux and RHEL-compatible UBI 9 in containers). Native
+Linux desktop smoke verification remains pending.
 
 Collect production-code coverage using the existing Coverlet collector:
 
@@ -141,7 +141,11 @@ Manifests declare what a module changes. Unknown manifest fields are rejected.
   feature ID may target it; `multiple`: any number) and an optional `contract`
   (the full name of a shared interface every contribution must implement). The
   module that owns a concept declares its points; the host itself only owns
-  `shell.host` (`ExtensionPoints.Shell`, contract `IShell`).
+  `shell.host` (`ExtensionPoints.Shell`, contract `IShell`). Display declares
+  `display.viewport` (`single`, contract `IChartViewport`) and contributes its
+  own viewport to it, so it needs no other module; CoreUI finds the effective
+  viewport contribution in the runtime status and hosts it without referencing
+  Display, showing an explicit unavailable state when none exists.
 - **`contributions`** register features with a point. A contribution adds a new
   feature (UI such as a shell, chart layer or panel; or a service). Its `id` is
   the key the module registers in `IModule.Features`, and registrations must
