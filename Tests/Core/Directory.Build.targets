@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <ModuleUnderTest>$(MSBuildProjectName.Replace('.Tests', ''))</ModuleUnderTest>
+    <!-- Core module directories are named Core<Module>; CoreUI already carries the prefix. -->
+    <ModuleDirectory Condition="$(ModuleUnderTest.StartsWith('Core'))">$(ModuleUnderTest)</ModuleDirectory>
+    <ModuleDirectory Condition="'$(ModuleDirectory)' == ''">Core$(ModuleUnderTest)</ModuleDirectory>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(ModuleUnderTest)' != 'Core'">
+    <Compile Include="$(MSBuildThisFileDirectory)..\Shared\ModuleDeclarationTests.cs" Link="ModuleDeclarationTests.cs" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\System\Core\$(ModuleDirectory)\module.json"
+          Link="module-under-test.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

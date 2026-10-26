@@ -1,0 +1,15 @@
+<Project>
+  <Target Name="DeployModule" DependsOnTargets="Build" Condition="'$(IsPoseidonModule)' == 'true'">
+    <Error Condition="'$(ModuleDeploymentDirectory)' == ''" Text="ModuleDeploymentDirectory is required." />
+    <PropertyGroup>
+      <PackageDirectory>$(ModuleDeploymentDirectory)\$(MSBuildProjectName)</PackageDirectory>
+    </PropertyGroup>
+    <Delete Files="$(PackageDirectory)\.ready" />
+    <ItemGroup>
+      <ModuleFiles Include="$(TargetDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ModuleFiles)" DestinationFiles="@(ModuleFiles->'$(PackageDirectory)\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\module.json" DestinationFolder="$(PackageDirectory)" />
+    <WriteLinesToFile File="$(PackageDirectory)\.ready" Lines="complete" Overwrite="true" />
+  </Target>
+</Project>

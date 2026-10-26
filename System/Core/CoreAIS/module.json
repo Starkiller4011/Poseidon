@@ -1,0 +1,8 @@
+{
+  "id": "Core.AIS",
+  "version": "0.0.1",
+  "entryAssembly": "CoreAIS.dll",
+  "dependencies": [
+    { "id": "Core.Tracks", "version": "0.0.1" }
+  ]
+}

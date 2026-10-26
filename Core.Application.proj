@@ -1,0 +1,17 @@
+<Project DefaultTargets="Build">
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <ModuleDeploymentDirectory>$(MSBuildThisFileDirectory)System\Core\Core\bin\$(Configuration)\net10.0\modules</ModuleDeploymentDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <Host Include="System\Core\Core\Core.csproj" />
+    <Modules Include="System\Core\CoreUI\CoreUI.csproj;System\Core\CoreDisplay\CoreDisplay.csproj;System\Core\CoreCharts\CoreCharts.csproj;System\Core\CoreTracks\CoreTracks.csproj;System\Core\CoreNavigation\CoreNavigation.csproj;System\Core\CoreAIS\CoreAIS.csproj;System\Core\CoreRadar\CoreRadar.csproj;System\Core\CoreSonar\CoreSonar.csproj" />
+  </ItemGroup>
+  <Target Name="Restore">
+    <MSBuild Projects="@(Host);@(Modules)" Targets="Restore" />
+  </Target>
+  <Target Name="Build">
+    <MSBuild Projects="@(Host)" Targets="Build" Properties="Configuration=$(Configuration)" />
+    <MSBuild Projects="@(Modules)" Targets="DeployModule" Properties="Configuration=$(Configuration);ModuleDeploymentDirectory=$(ModuleDeploymentDirectory)" />
+  </Target>
+</Project>

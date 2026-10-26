@@ -1,0 +1,61 @@
+<Solution>
+  <Folder Name="/Reference/">
+    <Project Path="Reference/Data/Data.csproj" Id="32362aca-cc96-4c61-a8d8-63392e97a587" />
+  </Folder>
+  <Folder Name="/System/" />
+  <Folder Name="/System/CMS/">
+    <Project Path="System/CMS/CmsCore/CmsCore.csproj" />
+    <Project Path="System/CMS/CmsRadar/CmsRadar.csproj" />
+    <Project Path="System/CMS/CmsTracks/CmsTracks.csproj" />
+    <Project Path="System/CMS/CmsUI/CmsUI.csproj" />
+    <Project Path="System/CMS/CmsComms/CmsComms.csproj" />
+    <Project Path="System/CMS/CmsEW/CmsEW.csproj" />
+    <Project Path="System/CMS/CmsGun/CmsGun.csproj" />
+    <Project Path="System/CMS/CmsMissile/CmsMissile.csproj" />
+    <Project Path="System/CMS/CmsSonar/CmsSonar.csproj" />
+  </Folder>
+  <Folder Name="/System/Core/">
+    <Project Path="System/Core/CoreAIS/CoreAIS.csproj" />
+    <Project Path="System/Core/CoreCharts/CoreCharts.csproj" />
+    <Project Path="System/Core/Core/Core.csproj" />
+    <Project Path="System/Core/CoreUI/CoreUI.csproj" />
+    <Project Path="System/Core/CoreDisplay/CoreDisplay.csproj" />
+    <Project Path="System/Core/CoreNavigation/CoreNavigation.csproj" />
+    <Project Path="System/Core/CoreRadar/CoreRadar.csproj" />
+    <Project Path="System/Core/CoreSonar/CoreSonar.csproj" />
+    <Project Path="System/Core/CoreTracks/CoreTracks.csproj" />
+  </Folder>
+  <Folder Name="/System/Shared/">
+    <Project Path="System/Shared/Contracts/Contracts.csproj" />
+  </Folder>
+  <Folder Name="/Tests/" />
+  <Folder Name="/Tests/Aggregate/">
+    <Project Path="Tests/Aggregate/Civilian.Tests/Civilian.Tests.csproj" />
+    <Project Path="Tests/Aggregate/Military.Tests/Military.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Tests/CMS/">
+    <Project Path="Tests/CMS/CmsCore.Tests/CmsCore.Tests.csproj" />
+    <Project Path="Tests/CMS/Comms.Tests/Comms.Tests.csproj" />
+    <Project Path="Tests/CMS/EW.Tests/EW.Tests.csproj" />
+    <Project Path="Tests/CMS/Gun.Tests/Gun.Tests.csproj" />
+    <Project Path="Tests/CMS/Missile.Tests/Missile.Tests.csproj" />
+    <Project Path="Tests/CMS/Sonar.Tests/Sonar.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Tests/Core/">
+    <Project Path="Tests/Core/AIS.Tests/AIS.Tests.csproj" />
+    <Project Path="Tests/Core/Charts.Tests/Charts.Tests.csproj" />
+    <Project Path="Tests/Core/Core.Tests/Core.Tests.csproj" />
+    <Project Path="Tests/Core/Navigation.Tests/Navigation.Tests.csproj" />
+    <Project Path="Tests/Core/Radar.Tests/Radar.Tests.csproj" />
+    <Project Path="Tests/Core/Tracks.Tests/Tracks.Tests.csproj" />
+    <Project Path="Tests/Core/CoreUI.Tests/CoreUI.Tests.csproj" />
+    <Project Path="Tests/Core/Display.Tests/Display.Tests.csproj" />
+    <Project Path="Tests/Core/Sonar.Tests/Sonar.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Tests/Fixtures/">
+    <Project Path="Tests/Fixtures/RuntimeModule/RuntimeModule.csproj" />
+  </Folder>
+  <Folder Name="/Tests/Shared/">
+    <Project Path="Tests/Shared/Contracts.Tests/Contracts.Tests.csproj" />
+  </Folder>
+</Solution>

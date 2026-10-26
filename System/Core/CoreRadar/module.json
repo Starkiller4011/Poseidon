@@ -1,0 +1,8 @@
+{
+  "id": "Core.Radar",
+  "version": "0.0.1",
+  "entryAssembly": "CoreRadar.dll",
+  "dependencies": [
+    { "id": "Core.Tracks", "version": "0.0.1" }
+  ]
+}

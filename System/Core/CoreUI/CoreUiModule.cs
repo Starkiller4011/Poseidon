@@ -1,0 +1,96 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Threading;
+using Poseidon.Core.Modules;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("CoreUI.Tests")]
+
+namespace Poseidon.Modules.CoreUI;
+
+public sealed class CoreUiModule : IModule, IShell
+{
+    private Window? window;
+    private DispatcherTimer? timer;
+    private bool stopping;
+    internal Window? ActiveWindow => window;
+    public IReadOnlyList<ModuleCapability> Capabilities => [];
+    public IReadOnlyDictionary<string, object> Features => new Dictionary<string, object> { ["core.ui.shell"] = this };
+
+    public async ValueTask StartAsync(IModuleHost host, ModuleState? state, CancellationToken cancellationToken)
+    {
+        if (state is not null)
+            throw new InvalidDataException("CoreUI does not accept persisted state yet.");
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            stopping = false;
+            var status = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+            var reload = new Button { Content = "Rescan / reload modules" };
+            reload.Click += (_, _) => host.RequestReload();
+            var exit = new Button { Content = "Exit" };
+            exit.Click += (_, _) => host.RequestShutdown();
+            var panel = new StackPanel { Margin = new Thickness(20), Spacing = 12 };
+            panel.Children.Add(new TextBlock { Text = "Poseidon", FontSize = 28 });
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Reloadable application foundation. Chart and sensor functionality is not implemented yet."
+            });
+            panel.Children.Add(reload);
+            panel.Children.Add(exit);
+            panel.Children.Add(status);
+            window = new Window
+            {
+                Title = "Poseidon", Width = 1000, Height = 650,
+                Content = new ScrollViewer { Content = panel },
+                WindowStartupLocation = WindowStartupLocation.CenterScreen
+            };
+            window.Closing += (_, e) =>
+            {
+                if (!stopping)
+                {
+                    e.Cancel = true;
+                    host.RequestShutdown();
+                }
+            };
+            void Refresh()
+            {
+                var snapshot = host.Status;
+                if (window is not null)
+                    window.Title = $"Poseidon - generation {snapshot.Generation}";
+                status.Text = $"Generation: {snapshot.Generation}; retired contexts awaiting collection: " +
+                    $"{snapshot.RetainedLoadContexts}\n\nPackages:\n" +
+                    string.Join("\n", snapshot.Packages.Select(FormatPackage)) +
+                    "\n\nModules:\n" +
+                    string.Join("\n", snapshot.Modules.Select(m => $"{m.ModuleId}  {m.Version}")) +
+                    "\n\nEffective features:\n" +
+                    string.Join("\n", snapshot.Features.Select(f => $"{f.FeatureId} -> {f.ProviderId}")) +
+                    "\n\nDiagnostics:\n" + string.Join("\n", snapshot.Diagnostics);
+            }
+            timer = new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Background,
+                (_, _) => Refresh());
+            Refresh();
+            window.Show();
+        });
+    }
+
+    internal static string FormatPackage(PackageStatus package)
+    {
+        var name = package.ModuleId is null
+            ? Path.GetFileName(package.PackagePath)
+            : $"{package.ModuleId} {package.Version}";
+        return package.Detail is null ? $"{package.State}: {name}" : $"{package.State}: {name} - {package.Detail}";
+    }
+
+    public async ValueTask StopAsync(CancellationToken cancellationToken)
+    {
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            stopping = true;
+            timer?.Stop();
+            timer = null;
+            window?.Close();
+            window = null;
+        });
+    }
+}

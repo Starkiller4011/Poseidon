@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.4">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\Core.Tests\Core.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\Charts.Tests\Charts.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\AIS.Tests\AIS.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\Tracks.Tests\Tracks.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\CmsCore.Tests\CmsCore.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\Radar.Tests\Radar.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\Sonar.Tests\Sonar.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\Gun.Tests\Gun.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\Missile.Tests\Missile.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\Comms.Tests\Comms.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\Navigation.Tests\Navigation.Tests.csproj" />
+    <ProjectReference Include="..\..\CMS\EW.Tests\EW.Tests.csproj" />
+  </ItemGroup>
+
+</Project>

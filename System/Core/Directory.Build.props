@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' != 'Core'">
+    <IsPoseidonModule>true</IsPoseidonModule>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(IsPoseidonModule)' == 'true'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\Shared\Contracts\Contracts.csproj" />
+  </ItemGroup>
+</Project>

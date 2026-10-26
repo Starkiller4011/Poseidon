@@ -1,0 +1,8 @@
+{
+  "id": "Core.UI",
+  "version": "0.0.1",
+  "entryAssembly": "CoreUI.dll",
+  "contributions": [
+    { "point": "shell.host", "id": "core.ui.shell", "version": "1.0.0" }
+  ]
+}

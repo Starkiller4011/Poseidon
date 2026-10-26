@@ -1,0 +1,13 @@
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <Include>[Core]*,[CoreUI]*,[Display]*,[Charts]*,[Tracks]*,[Navigation]*,[AIS]*,[Radar]*,[Sonar]*,[Poseidon.Contracts]*</Include>
+          <Exclude>[*.Tests]*,[RuntimeModule]*</Exclude>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
