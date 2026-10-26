@@ -1,7 +1,6 @@
 name: Cross-Platform Build, Test, and Package
 
 on:
-  push:
   pull_request:
   workflow_dispatch:
 

@@ -717,7 +717,7 @@ has now started as recorded below.
 - Preserved existing legacy IDs (`CMS.AIS`, `CMS.Tracks`, etc.) for compatibility;
   their names do not introduce dependencies on future CMS functionality.
 - Added root build/deployment documentation and a GitHub Actions workflow for
-  pushes, pull requests and manual dispatches. It runs a native Windows build,
+  pull requests and manual dispatches (not on push). It runs a native Windows build,
   full solution tests, civilian coverage and packaging, plus Arch Linux and
   Red Hat UBI 9 container build/test/package jobs. UBI 9 is the initial
   RHEL-compatible gate, not a substitute for native RHEL desktop validation.

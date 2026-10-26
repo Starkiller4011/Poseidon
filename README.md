@@ -68,7 +68,7 @@ but do not replace, real Windows/Arch Linux/RHEL desktop smoke tests.
 ## Continuous integration
 
 The [Cross-Platform Build, Test, and Package workflow](.github/workflows/build-test-package.yml)
-runs for pushes, pull requests, and manual dispatches. It provides:
+runs for pull requests and manual dispatches. It provides:
 
 - a native GitHub-hosted Windows build, full solution test run, civilian
   coverage collection, and packaged application artifact;
