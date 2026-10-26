@@ -36,6 +36,9 @@ internal sealed class ModulePackage : IDisposable
 
     public static PackageSource Inspect(string directory)
     {
+        // The fingerprint is taken before and after reading the manifest so that the manifest and the
+        // fingerprint always describe the same package snapshot, even if a deployment completes meanwhile.
+        var fingerprint = Fingerprint(directory);
         // Unknown members are rejected so a misspelled or obsolete declaration fails loudly.
         var manifest = JsonSerializer.Deserialize<ModuleManifest>(
             File.ReadAllText(Path.Combine(directory, "module.json")),
@@ -71,7 +74,9 @@ internal sealed class ModulePackage : IDisposable
                 throw new InvalidDataException(
                     $"Contribution {contribution.Id} in {directory} sets a priority but does not replace anything.");
         }
-        return new PackageSource(directory, Fingerprint(directory), manifest);
+        if (Fingerprint(directory) != fingerprint)
+            throw new IOException($"Package changed while its manifest was being read: {directory}");
+        return new PackageSource(directory, fingerprint, manifest);
     }
 
     private static void ValidateDependency(ModuleDependency? dependency)

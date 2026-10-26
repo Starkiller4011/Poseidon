@@ -201,7 +201,7 @@ internal static class ModuleGraph
         return ordered;
     }
 
-    private static string? ValidateDeclarations(ModulePackage package)
+    internal static string? ValidateDeclarations(ModulePackage package)
     {
         var manifest = package.Source.Manifest;
         if (manifest.Contributions.Select(c => c.Id).Distinct(StringComparer.Ordinal).Count() != manifest.Contributions.Length ||

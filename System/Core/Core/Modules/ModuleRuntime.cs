@@ -82,8 +82,16 @@ public sealed class ModuleRuntime : IModuleHost, IAsyncDisposable
 
     private void OnPackageChanged(object sender, FileSystemEventArgs e)
     {
-        if (Volatile.Read(ref disposalRequested) == 0)
+        if (Volatile.Read(ref disposalRequested) != 0)
+            return;
+        try
+        {
             timer?.Change(TimeSpan.FromMilliseconds(400), TimeSpan.FromSeconds(5));
+        }
+        catch (ObjectDisposedException)
+        {
+            // A watcher callback already in progress can race with timer disposal.
+        }
     }
 
     // Explicit user/module request: also retries packages that previously failed.
@@ -198,7 +206,16 @@ public sealed class ModuleRuntime : IModuleHost, IAsyncDisposable
                 {
                     try
                     {
-                        loaded.Add(ModulePackage.Load(ModulePackage.Inspect(entry.Directory), cacheDirectory, OnLoadFailure));
+                        var candidate = ModulePackage.Load(ModulePackage.Inspect(entry.Directory), cacheDirectory, OnLoadFailure);
+                        // Package-local declaration failures are handled like load failures so the running
+                        // version can be retained instead of being stopped and replaced by nothing.
+                        var declarationProblem = ModuleGraph.ValidateDeclarations(candidate);
+                        if (declarationProblem is not null)
+                        {
+                            Retire([candidate]);
+                            throw new InvalidDataException(declarationProblem);
+                        }
+                        loaded.Add(candidate);
                         continue;
                     }
                     catch (Exception ex)
