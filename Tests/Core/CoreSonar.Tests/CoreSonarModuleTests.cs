@@ -15,4 +15,16 @@ public sealed class CoreSonarModuleTests
         Assert.Equal("Core.Sonar", ModuleDeclarationTests.DeployedManifest().Id);
         Assert.DoesNotContain(module.GetType().Assembly.GetReferencedAssemblies(), a => a.Name == "Core");
     }
+
+    // Civilian sonar is for depth and bathymetry, so it must stay out of the track pipeline.
+    [Fact]
+    public void CoreSonar_IsNotATrackSource()
+    {
+        var manifest = ModuleDeclarationTests.DeployedManifest();
+        Assert.Empty(manifest.Dependencies);
+        Assert.Empty(manifest.Provides);
+        Assert.Empty(manifest.Contributions);
+        IModule module = new SonarModule();
+        Assert.Empty(module.Features);
+    }
 }

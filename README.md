@@ -224,6 +224,7 @@ Initialize chart-test dependencies when needed:
 git submodule update --init --recursive
 ```
 
-See the [application plan](Reference/Data/Plan-Memory/2026-10-24-poseidon-application-plan.md)
-and [chart mappings](Reference/Data/Feature-Mappings/README.md) for ownership,
-milestones and the remaining data-reader work.
+See the [master plan](Reference/Data/Plan-Memory/poseidon-master-plan.md),
+the [development workflow](Reference/Data/Plan-Memory/development-workflow.md)
+and [chart mappings](Reference/Data/Plan-Memory/Feature-Mappings/README.md) for ownership,
+milestones, how features are developed and the remaining data-reader work.

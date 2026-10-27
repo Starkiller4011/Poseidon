@@ -4,5 +4,14 @@
   "entryAssembly": "CoreRadar.dll",
   "dependencies": [
     { "id": "Core.Tracks", "version": "0.0.1" }
+  ],
+  "provides": [
+    {
+      "id": "radar.input", "version": "1.0.0", "cardinality": "single",
+      "contract": "Poseidon.Core.Modules.IRadarInput"
+    }
+  ],
+  "contributions": [
+    { "point": "radar.input", "id": "core.radar.input", "version": "1.0.0" }
   ]
 }
