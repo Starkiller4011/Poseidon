@@ -15,7 +15,24 @@ public sealed class ObservationRelay
 
     private sealed record ObservationItem(TrackObservation Observation) : Item;
 
-    private sealed record HealthItem(SourceHealth Health, string? Detail) : Item;
+    private sealed record HealthItem : Item
+    {
+        public HealthItem(SourceHealth health, string? detail)
+        {
+            Health = health;
+            Detail = detail;
+        }
+
+        public SourceHealth Health { get; private set; }
+
+        public string? Detail { get; private set; }
+
+        public void Update(SourceHealth health, string? detail)
+        {
+            Health = health;
+            Detail = detail;
+        }
+    }
 
     private const int CheckpointSchema = 1;
 
@@ -30,6 +47,7 @@ public sealed class ObservationRelay
     private Channel<Item>? channel;
     private CancellationTokenSource? cancellation;
     private Task? pump;
+    private HealthItem? trailingHealth;
     private long lastSequence;
     private int pending;
     private long enqueued;
@@ -94,6 +112,7 @@ public sealed class ObservationRelay
             }
             if (!channel.Writer.TryWrite(new ObservationItem(stamped)))
                 return SubmissionResult.Rejected(RejectionReason.Unavailable, "The adapter is stopping.");
+            trailingHealth = null;
             lastSequence++;
             enqueued++;
             Interlocked.Increment(ref pending);
@@ -101,11 +120,22 @@ public sealed class ObservationRelay
         }
     }
 
-    // Health reports are never refused: a disconnect must reach Tracks even when the queue is full.
+    // Consecutive health reports coalesce so control-message backlog stays bounded by observation traffic.
     public void ReportHealth(SourceHealth health, string? detail = null)
     {
         lock (sync)
-            channel?.Writer.TryWrite(new HealthItem(health, detail));
+        {
+            if (channel is null)
+                return;
+            if (trailingHealth is not null)
+            {
+                trailingHealth.Update(health, detail);
+                return;
+            }
+            var item = new HealthItem(health, detail);
+            if (channel.Writer.TryWrite(item))
+                trailingHealth = item;
+        }
     }
 
     public void Start()
@@ -118,6 +148,7 @@ public sealed class ObservationRelay
             var source = new CancellationTokenSource();
             channel = created;
             cancellation = source;
+            trailingHealth = null;
             // Lifecycle code runs with feature calls blocked; the pump must not inherit that flag.
             using (ExecutionContext.SuppressFlow())
                 pump = Task.Run(() => PumpAsync(created.Reader, source.Token));
@@ -137,6 +168,7 @@ public sealed class ObservationRelay
             pump = null;
             channel = null;
             cancellation = null;
+            trailingHealth = null;
         }
         if (stopping is null)
             return;
@@ -160,8 +192,16 @@ public sealed class ObservationRelay
         var batch = new List<TrackObservation>(batchSize);
         while (await reader.WaitToReadAsync(token))
         {
-            while (reader.TryRead(out var item))
+            while (true)
             {
+                Item item;
+                lock (sync)
+                {
+                    if (!reader.TryRead(out item!))
+                        break;
+                    if (item is HealthItem healthItem && ReferenceEquals(trailingHealth, healthItem))
+                        trailingHealth = null;
+                }
                 if (item is ObservationItem observation)
                 {
                     batch.Add(observation.Observation);
@@ -219,23 +259,27 @@ public sealed class ObservationRelay
 
     private async Task SendAsync(Action<ITrackIngestion> action, CancellationToken token)
     {
-        try
+        while (true)
         {
-            await host.InvokeAsync<ITrackIngestion, bool>(TrackPoints.IngestionFeatureId, i =>
+            try
             {
-                action(i);
-                return true;
-            }, token);
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            lock (sync)
-                lastFailure = ex.Message;
-            await Task.Delay(retryDelay, token);
+                await host.InvokeAsync<ITrackIngestion, bool>(TrackPoints.IngestionFeatureId, i =>
+                {
+                    action(i);
+                    return true;
+                }, token);
+                return;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lock (sync)
+                    lastFailure = ex.Message;
+                await Task.Delay(retryDelay, token);
+            }
         }
     }
 

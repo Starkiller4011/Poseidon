@@ -70,7 +70,8 @@ public sealed class RadarNormalizerTests
     [InlineData(1000.0, 10.0, -1)]
     public void InvalidReports_AreRejectedWithAProblem(double range, double bearing, int target)
     {
-        Assert.False(RadarNormalizer.TryNormalize(Report(range, bearing, target: target), out var observation, out var problem));
+        Assert.False(RadarNormalizer.TryNormalize(
+            Report(range, bearing, pose: OriginHeadingEast, target: target), out var observation, out var problem));
         Assert.Null(observation);
         Assert.False(string.IsNullOrWhiteSpace(problem));
     }
@@ -78,7 +79,8 @@ public sealed class RadarNormalizerTests
     [Fact]
     public void InvalidKinematicsAndPoseAreRejected()
     {
-        Assert.False(RadarNormalizer.TryNormalize(Report() with { SpeedOverGroundMetresPerSecond = -1 }, out _, out var speed));
+        Assert.False(RadarNormalizer.TryNormalize(
+            Report(pose: OriginHeadingEast) with { SpeedOverGroundMetresPerSecond = -1 }, out _, out var speed));
         Assert.False(string.IsNullOrWhiteSpace(speed));
         Assert.False(RadarNormalizer.TryNormalize(
             Report(pose: new SensorPose(new GeodeticPosition(120, 0), 0)), out _, out var pose));

@@ -94,6 +94,43 @@ public sealed class ObservationRelayTests
     }
 
     [Fact]
+    public async Task ConsecutiveHealthReports_CoalesceWithoutCrossingObservationOrdering()
+    {
+        var release = new TaskCompletionSource();
+        var host = new FakeTrackHost { Block = release.Task };
+        var relay = Create(host);
+        relay.Start();
+        relay.ReportHealth(SourceHealth.Degraded, "initial");
+        relay.Enqueue(Observation("1"));
+        for (var i = 0; i < 1000; i++)
+            relay.ReportHealth(i == 999 ? SourceHealth.Healthy : SourceHealth.Disconnected, $"update-{i}");
+
+        release.SetResult();
+        await host.Ingestion.WaitUntilAsync(
+            () => host.Ingestion.Calls.LastOrDefault() == "health:Core.Test:Healthy", "the coalesced health update");
+        Assert.Equal(
+            ["health:Core.Test:Degraded", "obs:1", "health:Core.Test:Healthy"],
+            host.Ingestion.Calls);
+        await relay.StopAsync();
+    }
+
+    [Fact]
+    public async Task FailedHealthDelivery_IsRetriedUntilItSucceeds()
+    {
+        var host = new FakeTrackHost { Failure = new InvalidOperationException("Tracks is unavailable.") };
+        var relay = Create(host);
+        relay.Start();
+        relay.ReportHealth(SourceHealth.Disconnected, "cable");
+        await host.Ingestion.WaitUntilAsync(() => relay.Statistics.LastFailure is not null, "the failed health delivery");
+
+        host.Failure = null;
+        await host.Ingestion.WaitUntilAsync(
+            () => host.Ingestion.Calls.Contains("health:Core.Test:Disconnected"), "health retry");
+        Assert.Single(host.Ingestion.Calls);
+        await relay.StopAsync();
+    }
+
+    [Fact]
     public async Task TrackRejections_AreCountedByReason()
     {
         var host = new FakeTrackHost();

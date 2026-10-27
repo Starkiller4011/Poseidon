@@ -34,22 +34,23 @@ public sealed class TracksModule : IModule
         [TrackPoints.FeedFeatureId] = manager
     };
 
-    public ValueTask StartAsync(IModuleHost host, ModuleState? state, CancellationToken cancellationToken)
+    public async ValueTask StartAsync(IModuleHost host, ModuleState? state, CancellationToken cancellationToken)
     {
         if (state is not null)
             manager.Restore(state);
-        timer?.Dispose();
+        if (timer is not null)
+            await timer.DisposeAsync();
         timer = time.CreateTimer(_ => manager.Advance(), null, tickInterval, tickInterval);
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask<ModuleState?> CaptureStateAsync(CancellationToken cancellationToken)
         => ValueTask.FromResult(manager.Capture());
 
-    public ValueTask StopAsync(CancellationToken cancellationToken)
+    public async ValueTask StopAsync(CancellationToken cancellationToken)
     {
-        timer?.Dispose();
+        var stopping = timer;
         timer = null;
-        return ValueTask.CompletedTask;
+        if (stopping is not null)
+            await stopping.DisposeAsync();
     }
 }
