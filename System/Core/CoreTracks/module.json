@@ -1,19 +1,19 @@
 {
   "id": "Core.Tracks",
-  "version": "0.0.1",
+  "version": "0.1.1",
   "entryAssembly": "CoreTracks.dll",
   "provides": [
     {
-      "id": "tracks.ingestion", "version": "1.0.0", "cardinality": "single",
+      "id": "tracks.ingestion", "version": "0.1.1", "cardinality": "single",
       "contract": "Poseidon.Core.Modules.ITrackIngestion"
     },
     {
-      "id": "tracks.feed", "version": "1.0.0", "cardinality": "single",
+      "id": "tracks.feed", "version": "0.1.1", "cardinality": "single",
       "contract": "Poseidon.Core.Modules.ITrackFeed"
     }
   ],
   "contributions": [
-    { "point": "tracks.ingestion", "id": "core.tracks.ingestion", "version": "1.0.0" },
-    { "point": "tracks.feed", "id": "core.tracks.feed", "version": "1.0.0" }
+    { "point": "tracks.ingestion", "id": "core.tracks.ingestion", "version": "0.1.1" },
+    { "point": "tracks.feed", "id": "core.tracks.feed", "version": "0.1.1" }
   ]
 }
