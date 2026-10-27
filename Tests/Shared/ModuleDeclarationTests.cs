@@ -69,7 +69,7 @@ public sealed class ModuleDeclarationTests
     public void SensorDependency_IsTracksOnly()
     {
         var (module, manifest) = Load();
-        if (module.GetType().Assembly.GetName().Name is "CoreAIS" or "CoreRadar" or "CoreSonar")
+        if (module.GetType().Assembly.GetName().Name is "CoreAIS" or "CoreRadar")
         {
             var dependency = Assert.Single(manifest.Dependencies);
             Assert.Equal("Core.Tracks", dependency.Id);

@@ -47,6 +47,35 @@ public sealed class ShellViewportIntegrationTests
         Assert.DoesNotContain("No chart data loaded", Text(replacement));
     }
 
+    [AvaloniaFact]
+    public async Task AisInput_ReachesTheShellViewportThroughTracksAndDisplay()
+    {
+        var opened = new List<Window>();
+        using var subscription = Window.WindowOpenedEvent.AddClassHandler(typeof(Window),
+            (sender, _) => opened.Add((Window)sender!), RoutingStrategies.Direct);
+        await using var modules = new DeployedModules();
+        modules.Deploy("CoreUI");
+        modules.Deploy("CoreDisplay");
+        modules.Deploy("CoreTracks");
+        modules.Deploy("CoreAIS");
+        Assert.True(await modules.Runtime.ReloadAsync());
+        Assert.All(modules.Runtime.Status.Packages, p => Assert.Equal(PackageState.Active, p.State));
+
+        var window = Assert.Single(opened, w => w.IsVisible);
+        await WaitUntil(() => Text(window).Contains("Tracks: 0"));
+
+        var report = new AisPositionReport(366123456, DateTimeOffset.UtcNow, 25.25, 55.5, 10, 90, 91, "MV EXAMPLE");
+        var result = await modules.Runtime.InvokeAsync<IAisInput, SubmissionResult>(
+            SensorPoints.AisInputFeatureId, i => i.Submit(report));
+        Assert.True(result.Accepted);
+        await WaitUntil(() => Text(window).Contains("Tracks: 1"));
+
+        modules.Remove("CoreTracks");
+        Assert.False(await modules.Runtime.ReloadAsync());
+        var replacement = Assert.Single(opened, w => w.IsVisible);
+        await WaitUntil(() => Text(replacement).Contains("Tracks unavailable"));
+    }
+
     private sealed class DeployedModules : IAsyncDisposable
     {
         private readonly string root = Path.Combine(Path.GetTempPath(), "Poseidon.Tests", Guid.NewGuid().ToString("N"));

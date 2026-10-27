@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup Condition="'$(ModuleUnderTest)' != 'Core'">
     <Compile Include="$(MSBuildThisFileDirectory)..\Shared\ModuleDeclarationTests.cs" Link="ModuleDeclarationTests.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)..\Shared\FakeTrackHost.cs" Link="FakeTrackHost.cs" />
     <None Include="$(MSBuildThisFileDirectory)..\..\System\Core\$(ModuleDirectory)\module.json"
           Link="module-under-test.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
