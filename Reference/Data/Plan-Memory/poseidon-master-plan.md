@@ -11,8 +11,9 @@ Status: M1-A (host foundation) is complete for its automated cross-platform
 gate. M1-B (CoreUI/Display viewport boundary) is merged and passed
 cross-platform CI. M1-E (track pipeline) is implemented and verified on Windows
 as single-source tracks; its acceptance is on hold because the fusion
-requirements confirmed on 2026-10-26 replace parts of it, and that rework is
-planned and approved but not started. This is not a certification claim.
+requirements confirmed on 2026-10-26 replace parts of it. That rework's slice 1
+(contracts) and slice 2 (estimator) are both accepted; slice 3 (manager) has
+not started. This is not a certification claim.
 
 ## How this documentation is organized
 
@@ -34,7 +35,7 @@ All files are in `Reference/Data/Plan-Memory/`.
 | [m1-b-ui-and-viewport.md](features/m1-b-ui-and-viewport.md) | M1-B | Done; merged after cross-platform CI |
 | [m1-c-chart-data-pipeline.md](features/m1-c-chart-data-pipeline.md) | M1-C | Not started; no plan approved |
 | [m1-e-track-pipeline.md](features/m1-e-track-pipeline.md) | M1-E (as built) | Implemented and verified on Windows; acceptance on hold pending the rework |
-| [m1-e-track-fusion.md](features/m1-e-track-fusion.md) | M1-E (rework) | Plan approved 2026-10-26 (bearing tracks in Core added); slice 1 (contracts) coded and green on Windows, waiting for acceptance |
+| [m1-e-track-fusion.md](features/m1-e-track-fusion.md) | M1-E (rework) | Plan approved 2026-10-26 (bearing tracks in Core added); slice 1 (contracts) merged; slice 2 (estimator) accepted; slice 3 (manager) not started |
 | [cms-backlog.md](features/cms-backlog.md) | CMS | Documentation only; deferred until the civilian side is complete |
 
 M1-D, M1-F and M1-G get their feature files when their planning starts.
