@@ -1,17 +1,17 @@
 {
   "id": "Core.AIS",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "entryAssembly": "CoreAIS.dll",
   "dependencies": [
-    { "id": "Core.Tracks", "version": "0.0.1" }
+    { "id": "Core.Tracks", "version": "0.1.1" }
   ],
   "provides": [
     {
-      "id": "ais.input", "version": "1.0.0", "cardinality": "single",
+      "id": "ais.input", "version": "0.0.2", "cardinality": "single",
       "contract": "Poseidon.Core.Modules.IAisInput"
     }
   ],
   "contributions": [
-    { "point": "ais.input", "id": "core.ais.input", "version": "1.0.0" }
+    { "point": "ais.input", "id": "core.ais.input", "version": "0.0.2" }
   ]
 }
