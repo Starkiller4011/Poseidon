@@ -3,10 +3,11 @@
 Milestone: M1-E rework (prerequisite: the M1-E track pipeline as built)
 Status: **Plan approved by the user on 2026-10-26, including the amendment
 moving bearing tracks into CoreTracks (21.12, R16a and R33 to R37). Slice 1
-(contracts) is merged. Slice 2 (estimator) is coded, the full solution passes
-with zero failures, and the user accepted it on 2026-10-27, including the two
-test corrections in its ledger entry. Slice 3 (manager) has not started.** An
-earlier implementation attempt of
+(contracts) is merged. Slice 2 (estimator) is accepted. Slice 3 (manager)
+Step 2 is done: the tests (R1 to R21, R33 to R36) are written and fail for
+the right reason against a stub `TrackManager` (see the ledger below); it is
+waiting for the user's acceptance before Step 3 (code). Slices 4 to 6 have
+not started.** An earlier implementation attempt of
 the whole rework was reverted at the user's request. Apart from slices 1 and
 2, the code is still at the verified state described in
 [m1-e-track-pipeline.md](m1-e-track-pipeline.md) (single-source tracks,
@@ -848,3 +849,115 @@ projects. Every slice 2 row above now passes.
 
 **Accepted by the user on 2026-10-27**, including the two test corrections
 above. Slice 2 is done; slice 3 (manager) has not started.
+
+### Slice 3 (manager): Step 2, tests written 2026-10-27
+
+Scope: R1 to R21 and R33 to R36 (correlator including bearing association,
+contributions, lifecycle, kind changes, automatic split, operator merge/split,
+checkpoint schema 2). The ingress/queue swap, the publisher/operations module
+points, adapters-as-publishers and the throughput baseline (R22 to R26, R29 to
+R31) are slice 4 and are not touched here.
+
+Contract and policy shapes written for real (data shape, not the behavior
+under test), per the approved design (21.2, 21.12):
+
+- `Track` is reshaped: `SourceId`, `SourceTargetId` and `LastSequence` are
+  replaced by `Kind` (`Point`, `Bearing`, `Hybrid`), a nullable `Bearing`
+  (`TrackBearing`: true bearing, uncertainty, own-ship position, measured
+  time) and `Contributions` (`TrackContribution`: source ID, source-local ID,
+  whether it is ranged, state, joined/measured/updated times, last sequence,
+  update count). Position is null exactly when `Kind` is `Bearing`. `Track`
+  keeps explicit value equality (contribution lists compare by content).
+- `ITrackOperations` and `TrackOperationResult` are added (R17, R18); `tracks.
+  operations` and the module's own exposure of it are slice 4 (`TracksModule`
+  is unchanged this slice, still only exposing `tracks.ingestion` and
+  `tracks.feed`, consistent with 21.3).
+- `TrackPolicy` (internal, `CoreTracks`) is reshaped from one global ageing
+  policy into the fallback for unregistered sources
+  (`Unregistered{Stale,Lost,Remove}After`, default uncertainties) plus the
+  correlation/estimation tunables from 21.4 (process noise, the 9.21 position
+  and velocity gates, the 0.75 dominance threshold, the 200 m maximum join
+  distance, the 3-update split confirmation count, the 6.63 bearing gate, the
+  3 m/s velocity-reported-when threshold, the 10 m/s initial velocity
+  uncertainty). Per-source timings and defaults come from each source's
+  registered `TrackSourceDescriptor` instead (R11); a new internal
+  `RegisterSource(TrackSourceDescriptor)` is `TrackManager`'s registration
+  entry point for this slice (`ITrackPublisher.Register` wires to it in
+  slice 4).
+- `TrackManager` keeps implementing `ITrackIngestion` unchanged (`Submit`,
+  `SubmitBatch`, `ReportSourceHealth`) and now also `ITrackOperations`
+  (`Merge`, `Split`). Every behavior-bearing member is a Step 2 stub throwing
+  `NotImplementedException`, except `Advance()`, which is a no-op: it runs on
+  `TracksModule`'s own background timer, and throwing there would crash that
+  timer instead of failing a single test cleanly. `GetSnapshot`/`GetChanges`
+  return a fixed empty result rather than throw, for the same reason (nothing
+  else calls them from a background thread today, but keeping every read path
+  exception-free is simpler to reason about than deciding path by path).
+
+Tests (`Tests/Core/CoreTracks.Tests/TrackManagerTests.cs`, rewritten per 21.6:
+the former E2 "nearby positions stay separate" premise and its variants are
+removed, not patched, since fusion makes the opposite true; `Tests/Core/
+CoreTracks.Tests/TrackBearingTests.cs`, new, for R33 to R36):
+
+| Requirement | Tests |
+|---|---|
+| R1 (invalid, carried over) | `InvalidObservations_AreRejectedWithoutCreatingTracks` |
+| R2 | `UnknownSourceTrack_ThatCorrelatesWithNothing_CreatesATrackWithAGeneratedNumber`, `KnownSourceTrack_UpdatesItsContributionAndTheTrack` |
+| R3 | `ANewSourceTrack_InsideTheGateOfExactlyOneCandidate_JoinsItAsAContribution` |
+| R4 | `ANewSourceTrack_OutsideEveryGate_CreatesANewTrack` |
+| R5 | `ANewSourceTrack_WellInsideOneCandidateAndFarFromAnother_JoinsTheDominantOne`, `ANewSourceTrack_EquidistantBetweenTwoCandidates_IsAmbiguousAndCreatesANewTrack` |
+| R6 | `ATrack_NeverGainsASecondActiveContributionFromTheSameSource` |
+| R7 | `ContributionsThatStopAgreeing_SplitAfterTheConfirmationCount_NotOnATransientDisagreement` |
+| R8 | `JoiningContributions_FuseIntoOneEstimate_WeightedByTheirReportedUncertainty` |
+| R9 | `ALateReportFromAnotherSource_IsAppliedWithoutBreakingTheTrack` |
+| R10 (carried over) | `ExactRepeatIsDuplicate_AndOlderObservationIsOutOfOrder_WithoutChangingTheTrack` |
+| R11 | `RegisteredSourceTimings_ApplyImmediately_AndSupersedeTheUnregisteredDefaults`, `UnregisteredSource_UsesThePolicyDefaults` |
+| R12 | `Track_IsActiveWhileAnyContributionIsActive_StaleWhenNoneAreActive_LostWhenAllAre` |
+| R13 | `ATrack_IsRemovedOnlyWhenItsLastContributionIsRemoved_AndKeepsItsNumberMeanwhile` |
+| R14 (carried over, per contribution) | `DisconnectedSource_HoldsItsContributionsAtStale_NotLostOrRemoved_UntilItResumes` |
+| R15 | `ANewSourceTrack_FromASourceWhoseEarlierContributionIsLost_MayRejoinTheSameTrack` |
+| R17 | `Merge_KeepsTheOlderNumber_MovesContributions_AndLaterReportsUpdateTheSurvivor`, `Merge_FailsWithAReason_ForAnUnknownTrack` |
+| R18 | `Split_MovesOneContributionToANewTrack_AndReEstimatesBoth`, `Split_FailsWithAReason_WhenItWouldRemoveTheLastContribution`, `Split_FailsWithAReason_ForAnUnknownTrackOrContribution` |
+| R19 (carried over) | `NewTracksBeyondCapacityAreRejected_ButExistingContributionsStillUpdate` |
+| R20 (carried over, reshaped) | `Feed_OffersGaplessOrderedChanges_IncludingContributions_ThatConvergeWithTheSnapshot`, `Feed_RequiresResyncForUnknownEpochFutureRevisionOrTrimmedLog` |
+| R21 (schema 2) | `Checkpoint_PreservesContributionsDescriptorsAndSourceHealth_AndRestoredTracksStillCorrelate`, `Restore_RejectsUnsupportedOrCorruptState` |
+| R33 | `BearingOnlyReport_ThatCorrelatesWithNothing_CreatesABearingTrack`, `BearingTrack_AgesAndIsRemoved_LikeAnyOtherTrack_AndItsNumberIsRetired` |
+| R34 | `BearingReport_ThatCorrelatesWithExactlyOnePointTrack_JoinsItAsAContribution`, `BearingReport_AmbiguousBetweenTwoTracks_StaysStandalone_AndJoinsOnceTheAmbiguityClears`, `BearingTracks_NeverCorrelateWithEachOther` |
+| R35 | `BearingContribution_RefinesThePoint_WhenTheOnlyActiveRangedContributionIsAis`, `BearingContribution_DoesNotRefineThePoint_WhileARadarContributionIsActive`, `BearingContribution_ThatStopsAgreeingForTheConfirmationCount_SplitsOffAsABearingTrack` |
+| R36 | `ABearingTrackWhoseSourceReportsARange_BecomesAPointTrack_KeepingItsNumber`, `ATrackWhoseRangedContributionsAllStop_WhileABearingContributionIsActive_BecomesHybrid`, `AHybridTrack_BecomesPointAgain_WhenARangedReportArrives` |
+
+Compile fixes elsewhere for the reshaped `Track` (data shape only, no behavior
+change): the local `Track(...)` helpers in `TrackMotionTests.cs`,
+`TrackReplicaTests.cs` and `CoreDisplay.Tests/TrackLayerTests.cs`.
+`TrackPipelineIntegrationTests.cs` is adjusted: its AIS+radar scenario is
+trimmed to the still-valid single-source (AIS-only) path and its old-shape
+field access updated; the "a radar target at the same place is a separate
+track" assertion is removed, since that premise is exactly what fusion
+reverses (R3) — its correct replacement is slice 5's real-runtime fusion
+scenario (R27, R28), not this slice.
+
+Failing run (2026-10-27): `dotnet build Core.Application.proj` and `dotnet
+build Poseidon.slnx`: no warnings or errors. `dotnet test Tests/Core/
+CoreTracks.Tests/CoreTracks.Tests.csproj`: 46 failed of 63. The 38 new slice 3
+tests (27 in `TrackManagerTests.cs`, 11 in `TrackBearingTests.cs`) fail with
+`NotImplementedException` from the stub, as expected. The other 8 failures are
+expected collateral from the same stub, not new problems: `TracksModuleTests`'
+two tests and the shared `ModuleDeclarationTests.StopBeforeStart_IsSafeAndIdempotent`
+fail immediately with the same exception (`Submit`/`Capture` on the real
+`TracksModule`); the four `TrackPipelineIntegrationTests` fail instead with a
+15 s timeout, because a submitted observation is normalized and handed to
+`ObservationRelay`'s background consumer thread, where `Submit`'s exception is
+not observed by the awaiting test — the symptom differs (timeout vs.
+exception) but the cause is the same stub. `Contracts.Tests` (105 of 105) and
+`CoreDisplay.Tests` (18 of 18) are unaffected by the reshape.
+
+`dotnet test Poseidon.slnx` (full solution): every project passes except
+`CoreTracks.Tests` (46 of 63, as above) and one more collateral failure found
+this way, `CoreUI.Tests.ShellViewportIntegrationTests.AisInput_ReachesTheShellViewportThroughTracksAndDisplay`
+(1 of 28) — the same real-runtime AIS-to-Tracks-to-Display path as the
+`TrackPipelineIntegrationTests`, timing out for the same reason. The Civilian
+aggregate's own module-suite rerun again surfaces an MSBuild MSB4181 for the
+same reason as slice 2's failing run (its usual way of propagating an inner
+suite failure); Military.Tests was not reached before the run stopped there.
+Every CMS smoke project, `Core.Tests`, `CoreAIS.Tests`, `CoreCharts.Tests`,
+`CoreNavigation.Tests`, `CoreRadar.Tests` and `CoreSonar.Tests` pass.

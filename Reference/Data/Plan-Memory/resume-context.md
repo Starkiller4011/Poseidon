@@ -1,6 +1,6 @@
 # Resume context
 
-Updated: 2026-10-27 (slice 2 coded)
+Updated: 2026-10-27 (slice 3 tests written)
 
 Read this at the start of every session, then
 [development-workflow.md](development-workflow.md), then
@@ -70,38 +70,97 @@ through tests then code with a gate after each.
 | Step | State | Detail |
 |---|---|---|
 | 1. Plan | Done, approved by the user on 2026-10-26 | Includes the bearing amendment (21.12) and the sequencing change (21.5) |
-| 2. Tests | Slice 1 and slice 2 done and approved | Next: slice 3 (manager), on the user's order |
+| 2. Tests | Slices 1 and 2 done and approved; slice 3 done, awaiting approval | Next: slices 4 to 6 |
 | 3. Code | Slice 1 merged (PR #2); slice 2 coded and accepted | Remaining: slices 3 to 6; the contracts draft in `features/m1-e-track-fusion-contracts-draft.md` is a starting point for slices 3 and 4 |
 
-Progress: slice 2 (estimator) is done and accepted. Gate: waiting for the
-order to start slice 3 (manager/correlator) Step 2 (tests).
+Progress: slice 3 (manager) Step 2 tests are written
+(`Tests/Core/CoreTracks.Tests/TrackManagerTests.cs`,
+`Tests/Core/CoreTracks.Tests/TrackBearingTests.cs`) against a stub
+`TrackManager`, and fail (46 of 63 in CoreTracks.Tests, including 8 expected
+collateral failures in other files) as expected. Gate: waiting for the user to
+accept the slice 3 tests, then the order to implement slice 3 (Step 3).
+
+A second feature is now also in flight, by the user's explicit choice to
+interleave them: [sensor simulators and ComputerGeneratedForce](features/sensor-simulators.md)
+(a `Simulators/` solution folder of standalone sensor-simulator processes, a
+`ComputerGeneratedForce` world server, and a new wire-protocol listener in
+`CoreAIS`/`CoreRadar`/`CoreSonar`).
+
+| Step | State | Detail |
+|---|---|---|
+| 1. Plan | Done, approved by the user on 2026-10-27 | Includes the `NdsSonarSim` civilian correction |
+| 2. Tests | Not started | May proceed alongside M1-E slices 3 to 6, on the user's order |
+| 3. Code | Not started | Waits until M1-E (slices 3 to 6) is done |
+
+Progress: plan approved. Gate: waiting for the order to start Step 2 (tests)
+for either feature (M1-E slice 3, or sensor-simulators, or both).
 
 ## Last changes made
 
-Feature and step: M1-E fusion rework, slice 2 accepted (Step 3 code already
-done), on branch `feature/core-track-system`.
+Feature and step: M1-E fusion rework, slice 3 (manager) Step 2 (tests), on
+branch `feature/core-track-system`. The sensor-simulators plan (above) was
+approved earlier in the same session but has had no further work since.
 
-- Implemented `TrackEstimator` (`System/Core/CoreTracks/TrackEstimator.cs`) to
-  the Step 2 design: the 4-state local east/north Kalman filter, sequential
-  scalar position/velocity updates, process noise, the bearing update gated on
-  an active ranged contribution, the clock that never moves backward, and the
-  ~20 km frame re-anchor.
-- Found and corrected two wrong assumptions in the slice 2 tests themselves
-  (not the design or requirements) while making them pass: a convergence
-  assertion compared a two-axis combined (DRMS) uncertainty against a one-axis
-  figure, and a hybrid-extrapolation assertion dead-reckoned against an
-  unconverged single-report velocity with a physically inconsistent
-  (non-moving) position input. Both are detailed, with the reasoning, in the
-  feature file's Step 3 ledger entry.
-- `dotnet build Core.Application.proj`: no warnings or errors. `dotnet test
-  Tests/Core/CoreTracks.Tests/CoreTracks.Tests.csproj`: 41 of 41 passed.
-  `dotnet test Poseidon.slnx`: every test project passed with zero failures,
-  including the Civilian and Military aggregates and the CMS smoke projects.
-  Recorded in the feature file's ledger.
-- The user accepted slice 2, including the two test corrections, on
-  2026-10-27.
+- Reshaped the contracts for fusion (21.2, 21.12): `Track` now has `Kind`
+  (`Point`/`Bearing`/`Hybrid`), a nullable `Bearing` and `Contributions`
+  (replacing `SourceId`/`SourceTargetId`/`LastSequence`); added
+  `ITrackOperations`/`TrackOperationResult`. `TrackPolicy` is reshaped into
+  unregistered-source fallbacks plus the 21.4 correlation/estimation
+  tunables; added an internal `RegisterSource` entry point on `TrackManager`
+  (R11).
+- Rewrote `System/Core/CoreTracks/TrackManager.cs` as a Step 2 stub:
+  `ITrackIngestion`, `ITrackFeed` and now `ITrackOperations`, every
+  behavior-bearing member throwing `NotImplementedException` except
+  `Advance()` (a no-op, since it runs on a background timer and throwing
+  there would crash it rather than fail a test) and the read-only
+  `GetSnapshot`/`GetChanges` (fixed empty result).
+- Wrote `Tests/Core/CoreTracks.Tests/TrackManagerTests.cs` (rewritten,
+  dropping the superseded "nearby positions stay separate" premise) and the
+  new `Tests/Core/CoreTracks.Tests/TrackBearingTests.cs`, covering R1 to R21
+  and R33 to R36.
+- Fixed compile-only `Track(...)` constructions in `TrackMotionTests.cs`,
+  `TrackReplicaTests.cs` and `CoreDisplay.Tests/TrackLayerTests.cs` for the
+  new shape (no behavior change); trimmed
+  `TrackPipelineIntegrationTests.cs`'s AIS+radar scenario to its still-valid
+  AIS-only path, deferring the real fusion scenario to slice 5 (R27, R28).
+- `dotnet build Poseidon.slnx`: no warnings or errors. `dotnet test
+  Tests/Core/CoreTracks.Tests/CoreTracks.Tests.csproj`: 46 failed of 63 (the
+  38 new tests, plus 8 expected collateral failures in `TracksModuleTests`,
+  the shared `ModuleDeclarationTests` and `TrackPipelineIntegrationTests`,
+  all attributable to the same stub). `Contracts.Tests` (105/105) and
+  `CoreDisplay.Tests` (18/18) unaffected. Full `dotnet test Poseidon.slnx`
+  confirmed: every project passes except `CoreTracks.Tests` (as above) and
+  one more collateral failure, `CoreUI.Tests.ShellViewportIntegrationTests.
+  AisInput_ReachesTheShellViewportThroughTracksAndDisplay` (1 of 28, same
+  timeout cause); the Civilian aggregate hits the same MSB4181 collateral as
+  slice 2's failing run. Recorded in the feature file's ledger.
 - Nothing is committed yet (working tree has the new and edited files,
   uncommitted, on `feature/core-track-system`).
+
+Earlier in the same session (sensor-simulators plan, approved, no further
+work since):
+
+- Wrote the plan [features/sensor-simulators.md](features/sensor-simulators.md)
+  for the `Simulators/` solution folder (13 standalone console-app project
+  skeletons the user added outside this session: `AisSim`,
+  `ComputerGeneratedForce`, `DataLinkSim`, `EchoSounderSim`, `EwSim`,
+  `FireControlRadarSim`, `GpsSim`, `HullMountedSonarSim`,
+  `NavigationRadarSim`, `NdsSonarSim`, `SurveillanceRadarSim`,
+  `TowedArraySonarSim`, `VariableDepthSonarSim`; none yet added to
+  `Poseidon.slnx`). The plan covers civilian simulators first (`AisSim`,
+  `NavigationRadarSim`, `EchoSounderSim`, `NdsSonarSim`, `GpsSim` — corrected
+  2026-10-27: `NdsSonarSim` is a civilian fish-finding/seabed-mapping sonar,
+  not military) plus `ComputerGeneratedForce` as a live world server,
+  wire-protocol simulated connections end to end, and the new Poseidon-side
+  listeners this requires in `CoreAIS`/`CoreRadar`/`CoreSonar`. The remaining
+  7 CMS/military Sim projects stay reserved, empty scaffolding until the CMS
+  backlog starts. Linked from the master plan's features table.
+- Nothing else is committed yet. `Simulators/` is untracked (`git status`);
+  the user has not asked for it to be added or committed.
+
+Earlier in the same session: M1-E slice 2 (estimator) was implemented and
+accepted, including two test corrections found while implementing it; full
+detail is in the feature file's own Step 3 ledger entry, not repeated here.
 
 Earlier (before this session; slice 1, now merged):
 
@@ -113,15 +172,23 @@ Earlier (before this session; slice 1, now merged):
 
 ## What needs to be done next
 
-1. **Slice 3 (manager) Step 2 (tests)**, on the user's order: the correlator
-   (including bearing association), contributions, lifecycle, kind changes,
-   automatic split, operations and checkpoint, against R1 to R21 and R33 to
-   R36 (21.5 item 3). The test file is rewritten, not patched, around the
-   reshaped `Track`.
-2. Slices 4 to 6 (ingress, consumers, close-out) have not started; see 21.5.
-3. Tuning (later, when real data is available): the 200 m join and split
+1. **Slice 3 (manager) acceptance.** The user accepts the tests in
+   `Tests/Core/CoreTracks.Tests/TrackManagerTests.cs` and `TrackBearingTests.cs`
+   and the contract/policy reshape they assume (feature file ledger, "Slice 3
+   (manager): Step 2"). The full `dotnet test Poseidon.slnx` run is confirmed
+   clean apart from the attributable collateral already recorded there.
+2. **Slice 3 Step 3 (code)**, on the user's order: implement `TrackManager`
+   (likely split into `TrackManager`, `TrackCorrelator`, `TrackPolicy` per
+   21.3) so the 38 slice 3 tests pass without changing them, then run the
+   focused tests, the full solution, and record the passing run.
+3. **Sensor-simulators Step 2 (tests)**, on the user's order, may proceed
+   alongside the above (plan approved 2026-10-27); its Step 3 (code) still
+   waits until M1-E (slices 3 to 6) is done.
+4. Slices 4 to 6 of M1-E (ingress, consumers, close-out) have not started; see
+   21.5.
+5. Tuning (later, when real data is available): the 200 m join and split
    distance, the declared peak report rates and the other starting values in
    section 21.4.
-4. M1-E as built is not accepted until the rework is done and CI passes on
+6. M1-E as built is not accepted until the rework is done and CI passes on
    Windows, Arch Linux and RHEL-compatible containers; the M1-C and M1-F
    planning has not started.

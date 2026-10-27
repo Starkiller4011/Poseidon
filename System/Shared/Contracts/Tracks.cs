@@ -156,25 +156,84 @@ public enum TrackState
     Lost
 }
 
-// An immutable managed track. Position is null for measurement-only tracks.
-public sealed record Track(
-    string Id,
+// A track's kind (21.12): Point has a fused position; Bearing has a true bearing and no position; Hybrid has
+// both, a point no longer refreshed by a range and a current bearing (R33 to R36).
+public enum TrackKind
+{
+    Point,
+    Bearing,
+    Hybrid
+}
+
+// A standalone bearing reading kept on a track (present for Bearing and Hybrid kinds, and for a Point track with
+// an Active bearing contribution that is not yet refining the point): the true bearing, its uncertainty, the
+// report's own-ship position, and when it was measured (R34 to R37).
+public sealed record TrackBearing(
+    double TrueBearingDegrees, double UncertaintyDegrees, GeodeticPosition OwnShipPosition, DateTimeOffset MeasuredUtc);
+
+// One source's contribution to a managed track: its own report stream (source ID plus its own target ID),
+// whether it carries a position/range (ranged) or only a bearing, and its own per-source lifecycle state.
+public sealed record TrackContribution(
     string SourceId,
     string SourceTargetId,
+    bool IsRanged,
+    TrackState State,
+    DateTimeOffset JoinedUtc,
+    DateTimeOffset MeasuredUtc,
+    DateTimeOffset UpdatedUtc,
+    long LastSequence,
+    int UpdateCount);
+
+// An immutable managed track: the fused estimate (or bearing-only reading) and the contributions behind it.
+// Position is null exactly when Kind is Bearing. A track's number never changes for as long as it lives (T4).
+public sealed record Track(
+    string Id,
     string? Name,
+    TrackKind Kind,
     TrackState State,
     GeodeticPosition? Position,
     double? PositionUncertaintyMetres,
     double? SpeedOverGroundMetresPerSecond,
     double? CourseOverGroundDegrees,
     double? HeadingDegrees,
-    PolarMeasurement? LatestMeasurement,
+    TrackBearing? Bearing,
     DateTimeOffset FirstSeenUtc,
     DateTimeOffset MeasuredUtc,
     DateTimeOffset UpdatedUtc,
-    long LastSequence,
     int UpdateCount,
-    long Revision);
+    long Revision,
+    IReadOnlyList<TrackContribution> Contributions)
+{
+    // Contribution lists compare by content.
+    public bool Equals(Track? other)
+        => other is not null && Id == other.Id && Name == other.Name && Kind == other.Kind && State == other.State &&
+           Position == other.Position && PositionUncertaintyMetres == other.PositionUncertaintyMetres &&
+           SpeedOverGroundMetresPerSecond == other.SpeedOverGroundMetresPerSecond &&
+           CourseOverGroundDegrees == other.CourseOverGroundDegrees && HeadingDegrees == other.HeadingDegrees &&
+           Bearing == other.Bearing && FirstSeenUtc == other.FirstSeenUtc && MeasuredUtc == other.MeasuredUtc &&
+           UpdatedUtc == other.UpdatedUtc && UpdateCount == other.UpdateCount && Revision == other.Revision &&
+           Contributions.SequenceEqual(other.Contributions);
+
+    public override int GetHashCode() => HashCode.Combine(Id, Kind, State, Position, MeasuredUtc, Revision, Contributions.Count);
+}
+
+public sealed record TrackOperationResult(bool Succeeded, string? TrackId, string? Detail)
+{
+    public static TrackOperationResult Success(string trackId, string? detail = null) => new(true, trackId, detail);
+
+    public static TrackOperationResult Failure(string detail) => new(false, null, detail);
+}
+
+// Operator corrections (R17, R18). Both may be undone by automatic splitting if the contributions disagree
+// beyond the split distance (R7).
+public interface ITrackOperations
+{
+    // Merges the other track into the older one, which keeps its number; returns the surviving track's id.
+    TrackOperationResult Merge(string trackId, string otherTrackId);
+
+    // Moves one source track out of a track into a new track with a new number.
+    TrackOperationResult Split(string trackId, string sourceId, string sourceTargetId);
+}
 
 public sealed record SourceStatus(string SourceId, SourceHealth Health, string? Detail, DateTimeOffset UpdatedUtc);
 
