@@ -160,7 +160,8 @@ internal static class ModuleGraph
             return new(PackageState.Blocked,
                 $"Contributes {contribution.Id} to extension point {contribution.Point}, which no loaded module provides.");
         var point = entry.Point;
-        if (!new ModuleDependency { Id = point.Id, Version = contribution.Version }.IsSatisfiedBy(Version.Parse(point.Version)))
+        var hostOwnedPoint = entry.Provider is null;
+        if (!hostOwnedPoint && !new ModuleDependency { Id = point.Id, Version = contribution.Version }.IsSatisfiedBy(Version.Parse(point.Version)))
             return new(PackageState.Blocked,
                 $"Contribution {contribution.Id} targets {point.Id} {contribution.Version} " +
                 $"(same major version or later), but {point.Version} is provided.");

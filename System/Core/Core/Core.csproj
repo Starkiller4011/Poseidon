@@ -8,6 +8,10 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.7" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.7" />
@@ -20,5 +24,24 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Shared\Contracts\Contracts.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <CoreDebugModuleProject Include="..\CoreUI\CoreUI.csproj" />
+    <CoreDebugModuleProject Include="..\CoreDisplay\CoreDisplay.csproj" />
+    <CoreDebugModuleProject Include="..\CoreCharts\CoreCharts.csproj" />
+    <CoreDebugModuleProject Include="..\CoreTracks\CoreTracks.csproj" />
+    <CoreDebugModuleProject Include="..\CoreNavigation\CoreNavigation.csproj" />
+    <CoreDebugModuleProject Include="..\CoreAIS\CoreAIS.csproj" />
+    <CoreDebugModuleProject Include="..\CoreRadar\CoreRadar.csproj" />
+    <CoreDebugModuleProject Include="..\CoreSonar\CoreSonar.csproj" />
+  </ItemGroup>
+
+  <Target Name="DeployCoreModulesForDebug"
+          BeforeTargets="Build"
+          Condition="'$(Configuration)' == 'Debug' and '$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="@(CoreDebugModuleProject)"
+             Targets="DeployModule"
+             Properties="Configuration=$(Configuration);ModuleDeploymentDirectory=$(TargetDir)modules" />
+  </Target>
 
 </Project>
