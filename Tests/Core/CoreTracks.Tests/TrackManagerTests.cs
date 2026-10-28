@@ -118,7 +118,9 @@ public sealed class TrackManagerTests
         var updated = manager.Submit(Observation(sequence: 2, seconds: 5, latitude: 25.1, name: "MV Example"));
         Assert.Equal((ObservationOutcome.Updated, created.TrackId), (updated.Outcome, updated.TrackId));
         var track = Only(manager);
-        Assert.Equal(25.1, track.Position!.LatitudeDegrees);
+        // The fused estimate moves toward the new report, not onto it outright (R8): it is pulled, not replaced.
+        Assert.True(track.Position!.LatitudeDegrees is > 25.0 and <= 25.1,
+            $"The fused latitude should move from 25.0 toward 25.1, not sit at {track.Position.LatitudeDegrees}.");
         Assert.Equal(Start.AddSeconds(5), track.MeasuredUtc);
         var contribution = Contribution(track, "Core.AIS");
         Assert.Equal((2L, 2), (contribution.LastSequence, contribution.UpdateCount));
@@ -218,6 +220,11 @@ public sealed class TrackManagerTests
     public void ANewSourceTrack_FromASourceWhoseEarlierContributionIsLost_MayRejoinTheSameTrack()
     {
         var (manager, time) = Create();
+        // A short-lived Radar descriptor so its contribution reaches Lost (but not Remove) on its own, while
+        // staying connected throughout: disconnecting instead would hold it at Stale forever (R14), which
+        // never frees the slot for a new radar source track to rejoin (R6 excludes Active and Stale, not Lost).
+        manager.RegisterSource(Descriptor(sourceId: "Core.Radar", kind: TrackSourceKinds.Radar,
+            intervalSeconds: 1, staleSeconds: 2, lostSeconds: 4, removeSeconds: 1000));
         var origin = new GeodeticPosition(25.0, 55.0);
         manager.Submit(Observation(source: "Core.AIS", target: "7",
             latitude: origin.LatitudeDegrees, longitude: origin.LongitudeDegrees));
@@ -225,14 +232,13 @@ public sealed class TrackManagerTests
             latitude: origin.LatitudeDegrees, longitude: origin.LongitudeDegrees));
         var trackId = radar.TrackId!;
 
-        // The radar contribution ages out to Lost without affecting the AIS contribution.
-        manager.ReportSourceHealth("Core.Radar", SourceHealth.Disconnected);
-        time.Advance(TimeSpan.FromSeconds(1000));
+        // The radar contribution ages to Lost on its own; the AIS contribution is unaffected.
+        time.Advance(TimeSpan.FromSeconds(5));
         manager.Advance();
-        manager.ReportSourceHealth("Core.Radar", SourceHealth.Healthy);
+        Assert.Equal(TrackState.Lost, Contribution(Only(manager), "Core.Radar").State);
 
         // A brand new radar source track (a different target number) near the same place now may rejoin.
-        var rejoined = manager.Submit(Observation(source: "Core.Radar", target: "9", sequence: 1, seconds: 1000,
+        var rejoined = manager.Submit(Observation(source: "Core.Radar", target: "9", sequence: 1, seconds: 5,
             latitude: origin.LatitudeDegrees, longitude: origin.LongitudeDegrees));
         Assert.Equal(trackId, rejoined.TrackId);
         var contribution = Contribution(Only(manager), "Core.Radar");
@@ -290,9 +296,10 @@ public sealed class TrackManagerTests
         manager.Advance();
         Assert.Equal(TrackState.Stale, Only(manager).State);
 
-        // Re-registering tightens the timings further and the new timings apply immediately.
+        // Re-registering tightens the timings further and the new timings apply immediately: the 6 s already
+        // elapsed now also clears the lost threshold, but stays short of the (still generous) removal one.
         manager.RegisterSource(Descriptor(sourceId: "Core.Radar", kind: TrackSourceKinds.Radar,
-            intervalSeconds: 1, staleSeconds: 2, lostSeconds: 3, removeSeconds: 4));
+            intervalSeconds: 1, staleSeconds: 2, lostSeconds: 3, removeSeconds: 100));
         manager.Advance();
         Assert.Equal(TrackState.Lost, Only(manager).State);
     }

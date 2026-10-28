@@ -1,6 +1,6 @@
 # Resume context
 
-Updated: 2026-10-27 (slice 3 tests written)
+Updated: 2026-10-28 (slice 3 coded)
 
 Read this at the start of every session, then
 [development-workflow.md](development-workflow.md), then
@@ -70,15 +70,11 @@ through tests then code with a gate after each.
 | Step | State | Detail |
 |---|---|---|
 | 1. Plan | Done, approved by the user on 2026-10-26 | Includes the bearing amendment (21.12) and the sequencing change (21.5) |
-| 2. Tests | Slices 1 and 2 done and approved; slice 3 done, awaiting approval | Next: slices 4 to 6 |
-| 3. Code | Slice 1 merged (PR #2); slice 2 coded and accepted | Remaining: slices 3 to 6; the contracts draft in `features/m1-e-track-fusion-contracts-draft.md` is a starting point for slices 3 and 4 |
+| 2. Tests | Slices 1 to 3 done and approved | Next: slice 4 (ingress) |
+| 3. Code | Slices 1 to 3 merged/accepted | Remaining: slices 4 to 6; the contracts draft in `features/m1-e-track-fusion-contracts-draft.md` is a starting point for slice 4 |
 
-Progress: slice 3 (manager) Step 2 tests are written
-(`Tests/Core/CoreTracks.Tests/TrackManagerTests.cs`,
-`Tests/Core/CoreTracks.Tests/TrackBearingTests.cs`) against a stub
-`TrackManager`, and fail (46 of 63 in CoreTracks.Tests, including 8 expected
-collateral failures in other files) as expected. Gate: waiting for the user to
-accept the slice 3 tests, then the order to implement slice 3 (Step 3).
+Progress: slice 3 (manager) is done and accepted. Gate: waiting for the order
+to start slice 4 (ingress) Step 2 (tests).
 
 A second feature is now also in flight, by the user's explicit choice to
 interleave them: [sensor simulators and ComputerGeneratedForce](features/sensor-simulators.md)
@@ -97,45 +93,35 @@ for either feature (M1-E slice 3, or sensor-simulators, or both).
 
 ## Last changes made
 
-Feature and step: M1-E fusion rework, slice 3 (manager) Step 2 (tests), on
-branch `feature/core-track-system`. The sensor-simulators plan (above) was
-approved earlier in the same session but has had no further work since.
+Feature and step: M1-E fusion rework, slice 3 accepted (Step 3 code already
+done), on branch `feature/core-track-system`.
 
-- Reshaped the contracts for fusion (21.2, 21.12): `Track` now has `Kind`
-  (`Point`/`Bearing`/`Hybrid`), a nullable `Bearing` and `Contributions`
-  (replacing `SourceId`/`SourceTargetId`/`LastSequence`); added
-  `ITrackOperations`/`TrackOperationResult`. `TrackPolicy` is reshaped into
-  unregistered-source fallbacks plus the 21.4 correlation/estimation
-  tunables; added an internal `RegisterSource` entry point on `TrackManager`
-  (R11).
-- Rewrote `System/Core/CoreTracks/TrackManager.cs` as a Step 2 stub:
-  `ITrackIngestion`, `ITrackFeed` and now `ITrackOperations`, every
-  behavior-bearing member throwing `NotImplementedException` except
-  `Advance()` (a no-op, since it runs on a background timer and throwing
-  there would crash it rather than fail a test) and the read-only
-  `GetSnapshot`/`GetChanges` (fixed empty result).
-- Wrote `Tests/Core/CoreTracks.Tests/TrackManagerTests.cs` (rewritten,
-  dropping the superseded "nearby positions stay separate" premise) and the
-  new `Tests/Core/CoreTracks.Tests/TrackBearingTests.cs`, covering R1 to R21
-  and R33 to R36.
-- Fixed compile-only `Track(...)` constructions in `TrackMotionTests.cs`,
-  `TrackReplicaTests.cs` and `CoreDisplay.Tests/TrackLayerTests.cs` for the
-  new shape (no behavior change); trimmed
-  `TrackPipelineIntegrationTests.cs`'s AIS+radar scenario to its still-valid
-  AIS-only path, deferring the real fusion scenario to slice 5 (R27, R28).
+- The user accepted slice 3, including the test and production fixes, on
+  2026-10-28.
+- Implemented `TrackManager` (correlation, contributions, per-contribution
+  lifecycle, automatic split, operator merge/split, bearing association and
+  kind changes, checkpoint schema 2) and added `Peek`/`Export`/`Restore` to
+  `TrackEstimator` (additive; no slice 2 test's behavior changed). Full
+  design in the feature file's Step 3 ledger entry, including the gating/
+  dominance-score simplifications (isotropic uncertainty, position-only
+  likelihood) documented as starting points.
+- Found and fixed six test-design bugs while making the tests pass (detailed
+  in the ledger, not repeated here), plus one real production bug: rejoining
+  a source whose earlier contribution was Lost (R15) added the new
+  contribution without removing the old one, leaving both; fixed in
+  `ApplyObservation`.
 - `dotnet build Poseidon.slnx`: no warnings or errors. `dotnet test
-  Tests/Core/CoreTracks.Tests/CoreTracks.Tests.csproj`: 46 failed of 63 (the
-  38 new tests, plus 8 expected collateral failures in `TracksModuleTests`,
-  the shared `ModuleDeclarationTests` and `TrackPipelineIntegrationTests`,
-  all attributable to the same stub). `Contracts.Tests` (105/105) and
-  `CoreDisplay.Tests` (18/18) unaffected. Full `dotnet test Poseidon.slnx`
-  confirmed: every project passes except `CoreTracks.Tests` (as above) and
-  one more collateral failure, `CoreUI.Tests.ShellViewportIntegrationTests.
-  AisInput_ReachesTheShellViewportThroughTracksAndDisplay` (1 of 28, same
-  timeout cause); the Civilian aggregate hits the same MSB4181 collateral as
-  slice 2's failing run. Recorded in the feature file's ledger.
+  Tests/Core/CoreTracks.Tests/CoreTracks.Tests.csproj`: 63 of 63 passed.
+  `dotnet test Poseidon.slnx`: every project passed with zero failures,
+  including `CoreUI.Tests` (28/28, the previously timing-out
+  `ShellViewportIntegrationTests` test now passes) and both aggregates
+  (no MSB4181 this time). Recorded in the feature file's ledger.
 - Nothing is committed yet (working tree has the new and edited files,
   uncommitted, on `feature/core-track-system`).
+
+Earlier in the same session: slice 3 Step 2 (tests) was written against a
+stub `TrackManager` and failed as expected; full detail is in the feature
+file's own Step 2 ledger entry, not repeated here.
 
 Earlier in the same session (sensor-simulators plan, approved, no further
 work since):
@@ -172,23 +158,19 @@ Earlier (before this session; slice 1, now merged):
 
 ## What needs to be done next
 
-1. **Slice 3 (manager) acceptance.** The user accepts the tests in
-   `Tests/Core/CoreTracks.Tests/TrackManagerTests.cs` and `TrackBearingTests.cs`
-   and the contract/policy reshape they assume (feature file ledger, "Slice 3
-   (manager): Step 2"). The full `dotnet test Poseidon.slnx` run is confirmed
-   clean apart from the attributable collateral already recorded there.
-2. **Slice 3 Step 3 (code)**, on the user's order: implement `TrackManager`
-   (likely split into `TrackManager`, `TrackCorrelator`, `TrackPolicy` per
-   21.3) so the 38 slice 3 tests pass without changing them, then run the
-   focused tests, the full solution, and record the passing run.
-3. **Sensor-simulators Step 2 (tests)**, on the user's order, may proceed
+1. **Slice 4 (ingress) Step 2 (tests)**, on the user's order: the publisher,
+   per-source queues and consumer thread, the operations feature exposed
+   through the module, manifests, adapters as publishers, radar rotation
+   rate, statistics, the throughput baseline (R22 to R26, R29 to R31, 21.5
+   item 4). The contracts draft in
+   `features/m1-e-track-fusion-contracts-draft.md` is a starting point.
+2. **Sensor-simulators Step 2 (tests)**, on the user's order, may proceed
    alongside the above (plan approved 2026-10-27); its Step 3 (code) still
    waits until M1-E (slices 3 to 6) is done.
-4. Slices 4 to 6 of M1-E (ingress, consumers, close-out) have not started; see
-   21.5.
-5. Tuning (later, when real data is available): the 200 m join and split
+3. Slices 5 and 6 of M1-E (consumers, close-out) have not started; see 21.5.
+4. Tuning (later, when real data is available): the 200 m join and split
    distance, the declared peak report rates and the other starting values in
    section 21.4.
-6. M1-E as built is not accepted until the rework is done and CI passes on
+5. M1-E as built is not accepted until the rework is done and CI passes on
    Windows, Arch Linux and RHEL-compatible containers; the M1-C and M1-F
    planning has not started.

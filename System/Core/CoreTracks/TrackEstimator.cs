@@ -16,6 +16,19 @@ internal sealed record TrackEstimate(
     GeodeticPosition? BearingOwnShipPosition,
     DateTimeOffset? BearingMeasuredUtc);
 
+// A serializable snapshot of a TrackEstimator's full internal state; see TrackEstimator.Export/Restore (R21).
+// P is flattened row-major (4x4 = 16 values): System.Text.Json does not support rectangular arrays directly.
+internal sealed record TrackEstimatorState(
+    GeodeticPosition Origin,
+    DateTimeOffset StateUtc,
+    double[] X,
+    double[] P,
+    double ProcessNoiseAccelerationMetresPerSecondSquared,
+    double? BearingDegrees,
+    double? BearingUncertaintyDegrees,
+    GeodeticPosition? BearingOwnShipPosition,
+    DateTimeOffset? BearingMeasuredUtc);
+
 // One track's constant-velocity Kalman filter in a local east/north frame (m1-e-track-fusion.md section 21,
 // "Estimate"). State is [east, north, veast, vnorth] with a full 4x4 covariance, so a bearing measurement can
 // move both axes from one scalar update; position and velocity measurements are applied as sequential scalar
@@ -63,6 +76,55 @@ internal sealed class TrackEstimator
     {
         AdvanceTo(atUtc);
         return BuildEstimate();
+    }
+
+    // Like Predict, but never mutates this estimator: used by the correlator to score several candidate tracks
+    // against one report without committing to any of them (R3 to R6, R34).
+    public TrackEstimate Peek(DateTimeOffset atUtc)
+    {
+        var savedOrigin = origin;
+        var savedStateUtc = stateUtc;
+        var savedX = (double[])x.Clone();
+        var savedP = (double[,])p.Clone();
+        try
+        {
+            AdvanceTo(atUtc);
+            return BuildEstimate();
+        }
+        finally
+        {
+            origin = savedOrigin;
+            stateUtc = savedStateUtc;
+            Array.Copy(savedX, x, x.Length);
+            Array.Copy(savedP, p, p.Length);
+        }
+    }
+
+    // A serializable snapshot of this estimator's full internal state, for checkpointing (R21): the frame
+    // origin and clock, the raw [east, north, veast, vnorth] state and its 4x4 covariance, and the latest
+    // bearing if any. Restore rebuilds an estimator with exactly this state, not a fresh one.
+    public TrackEstimatorState Export()
+    {
+        var flatP = new double[16];
+        for (var i = 0; i < 4; i++)
+            for (var j = 0; j < 4; j++)
+                flatP[i * 4 + j] = p[i, j];
+        return new(origin, stateUtc, (double[])x.Clone(), flatP, processNoiseAcceleration,
+            bearingDegrees, bearingUncertainty, bearingOwnShipPosition, bearingMeasuredUtc);
+    }
+
+    public static TrackEstimator Restore(TrackEstimatorState state)
+    {
+        var estimator = new TrackEstimator(state.Origin, 0, state.StateUtc, 0, state.ProcessNoiseAccelerationMetresPerSecondSquared);
+        Array.Copy(state.X, estimator.x, estimator.x.Length);
+        for (var i = 0; i < 4; i++)
+            for (var j = 0; j < 4; j++)
+                estimator.p[i, j] = state.P[i * 4 + j];
+        estimator.bearingDegrees = state.BearingDegrees;
+        estimator.bearingUncertainty = state.BearingUncertaintyDegrees;
+        estimator.bearingOwnShipPosition = state.BearingOwnShipPosition;
+        estimator.bearingMeasuredUtc = state.BearingMeasuredUtc;
+        return estimator;
     }
 
     // R8, R9: advances to the later of measuredUtc and the current state time (a late report never rolls the

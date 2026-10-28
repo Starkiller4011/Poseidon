@@ -94,34 +94,38 @@ public sealed class TrackBearingTests
     public void BearingReport_AmbiguousBetweenTwoTracks_StaysStandalone_AndJoinsOnceTheAmbiguityClears()
     {
         var (manager, time) = Create();
+        manager.RegisterSource(Descriptor(sourceId: "Core.AIS",
+            intervalSeconds: 10, staleSeconds: 20, lostSeconds: 40, removeSeconds: 60));
         var ownShip = new GeodeticPosition(0, 0);
         var near = Geodesy.Project(ownShip, 90, 1_000);
         var far = Geodesy.Project(ownShip, 90, 1_010); // almost exactly the same bearing from own ship
 
         var nearTrack = manager.Submit(Observation(source: "Core.AIS", target: "near",
             latitude: near.LatitudeDegrees, longitude: near.LongitudeDegrees));
-        manager.Submit(Observation(source: "Core.AIS", target: "far",
+        manager.Submit(Observation(source: "Core.AIS", target: "far", sequence: 1, seconds: 1,
             latitude: far.LatitudeDegrees, longitude: far.LongitudeDegrees));
 
-        var bearing = manager.Submit(BearingObservation(source: "Core.EW", target: "1", sequence: 1, seconds: 1,
+        var bearing = manager.Submit(BearingObservation(source: "Core.EW", target: "1", sequence: 1, seconds: 2,
             ownShipLatitude: ownShip.LatitudeDegrees, ownShipLongitude: ownShip.LongitudeDegrees,
             bearingDegrees: TrueBearingDegrees(ownShip, near)));
         Assert.Equal(ObservationOutcome.Created, bearing.Outcome);
         Assert.Equal(TrackKind.Bearing, manager.GetSnapshot().Tracks.Single(t => t.Id == bearing.TrackId).Kind);
 
-        // The far track is removed, clearing the ambiguity; the next bearing from the same source track joins
-        // the sole remaining candidate.
-        manager.ReportSourceHealth("Core.AIS", SourceHealth.Disconnected);
-        time.Advance(TimeSpan.FromSeconds(1000));
-        manager.Advance();
-        manager.ReportSourceHealth("Core.AIS", SourceHealth.Healthy);
-        var revived = manager.Submit(Observation(source: "Core.AIS", target: "near", sequence: 1, seconds: 1001,
-            latitude: near.LatitudeDegrees, longitude: near.LongitudeDegrees));
+        // Keep "near" alive with fresh reports while "far" is left to age past removal (60 s) on its own,
+        // clearing the ambiguity without ever disconnecting the source.
+        for (var i = 1; i <= 7; i++)
+        {
+            time.Advance(TimeSpan.FromSeconds(10));
+            manager.Submit(Observation(source: "Core.AIS", target: "near", sequence: i + 1, seconds: 2 + i * 10,
+                latitude: near.LatitudeDegrees, longitude: near.LongitudeDegrees));
+            manager.Advance();
+        }
+        Assert.DoesNotContain(manager.GetSnapshot().Tracks, t => t.Contributions.Any(c => c.SourceTargetId == "far"));
 
-        var rejoin = manager.Submit(BearingObservation(source: "Core.EW", target: "1", sequence: 2, seconds: 1002,
+        var rejoin = manager.Submit(BearingObservation(source: "Core.EW", target: "1", sequence: 2, seconds: 73,
             ownShipLatitude: ownShip.LatitudeDegrees, ownShipLongitude: ownShip.LongitudeDegrees,
             bearingDegrees: TrueBearingDegrees(ownShip, near)));
-        Assert.Equal(revived.TrackId, rejoin.TrackId);
+        Assert.Equal(nearTrack.TrackId, rejoin.TrackId);
     }
 
     [Fact]
@@ -175,7 +179,9 @@ public sealed class TrackBearingTests
             latitude: position.LatitudeDegrees, longitude: position.LongitudeDegrees));
 
         var before = Only(manager).Position!;
-        manager.Submit(BearingObservation(source: "Core.EW", target: "1", sequence: 1, seconds: 1,
+        // Same measured instant as the AIS/radar reports, so any position change can only come from the
+        // bearing itself, not from ordinary dead reckoning over elapsed time.
+        manager.Submit(BearingObservation(source: "Core.EW", target: "1", sequence: 1, seconds: 0,
             ownShipLatitude: ownShip.LatitudeDegrees, ownShipLongitude: ownShip.LongitudeDegrees,
             bearingDegrees: 45, bearingUncertaintyDegrees: 2));
         var after = Only(manager).Position!;

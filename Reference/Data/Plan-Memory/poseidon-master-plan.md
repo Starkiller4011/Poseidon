@@ -11,9 +11,9 @@ Status: M1-A (host foundation) is complete for its automated cross-platform
 gate. M1-B (CoreUI/Display viewport boundary) is merged and passed
 cross-platform CI. M1-E (track pipeline) is implemented and verified on Windows
 as single-source tracks; its acceptance is on hold because the fusion
-requirements confirmed on 2026-10-26 replace parts of it. That rework's slice 1
-(contracts) and slice 2 (estimator) are both accepted; slice 3 (manager) has
-its tests written and awaiting acceptance. This is not a certification claim.
+requirements confirmed on 2026-10-26 replace parts of it. That rework's slices
+1 to 3 are accepted; slice 4 (ingress) has not started. This is not a
+certification claim.
 
 ## How this documentation is organized
 
@@ -35,7 +35,7 @@ All files are in `Reference/Data/Plan-Memory/`.
 | [m1-b-ui-and-viewport.md](features/m1-b-ui-and-viewport.md) | M1-B | Done; merged after cross-platform CI |
 | [m1-c-chart-data-pipeline.md](features/m1-c-chart-data-pipeline.md) | M1-C | Not started; no plan approved |
 | [m1-e-track-pipeline.md](features/m1-e-track-pipeline.md) | M1-E (as built) | Implemented and verified on Windows; acceptance on hold pending the rework |
-| [m1-e-track-fusion.md](features/m1-e-track-fusion.md) | M1-E (rework) | Plan approved 2026-10-26 (bearing tracks in Core added); slices 1 and 2 accepted; slice 3 (manager) tests written, awaiting acceptance |
+| [m1-e-track-fusion.md](features/m1-e-track-fusion.md) | M1-E (rework) | Plan approved 2026-10-26 (bearing tracks in Core added); slices 1 to 3 accepted; slice 4 (ingress) not started |
 | [cms-backlog.md](features/cms-backlog.md) | CMS | Documentation only; deferred until the civilian side is complete |
 | [sensor-simulators.md](features/sensor-simulators.md) | Supporting infrastructure | Plan approved 2026-10-27; tests may proceed alongside M1-E, code waits until M1-E is done |
 

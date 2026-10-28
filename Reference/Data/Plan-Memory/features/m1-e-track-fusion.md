@@ -2,12 +2,9 @@
 
 Milestone: M1-E rework (prerequisite: the M1-E track pipeline as built)
 Status: **Plan approved by the user on 2026-10-26, including the amendment
-moving bearing tracks into CoreTracks (21.12, R16a and R33 to R37). Slice 1
-(contracts) is merged. Slice 2 (estimator) is accepted. Slice 3 (manager)
-Step 2 is done: the tests (R1 to R21, R33 to R36) are written and fail for
-the right reason against a stub `TrackManager` (see the ledger below); it is
-waiting for the user's acceptance before Step 3 (code). Slices 4 to 6 have
-not started.** An earlier implementation attempt of
+moving bearing tracks into CoreTracks (21.12, R16a and R33 to R37). Slices 1
+to 3 are accepted (slice 3 on 2026-10-28, including the test and production
+fixes in its ledger entry). Slices 4 to 6 have not started.** An earlier implementation attempt of
 the whole rework was reverted at the user's request. Apart from slices 1 and
 2, the code is still at the verified state described in
 [m1-e-track-pipeline.md](m1-e-track-pipeline.md) (single-source tracks,
@@ -961,3 +958,75 @@ same reason as slice 2's failing run (its usual way of propagating an inner
 suite failure); Military.Tests was not reached before the run stopped there.
 Every CMS smoke project, `Core.Tests`, `CoreAIS.Tests`, `CoreCharts.Tests`,
 `CoreNavigation.Tests`, `CoreRadar.Tests` and `CoreSonar.Tests` pass.
+
+### Slice 3 (manager): Step 3, code written 2026-10-28
+
+The user ordered the implementation on 2026-10-28.
+
+- `TrackManager` is rewritten in full: per-source registration (`RegisterSource`),
+  correlation (nearest-neighbour position gate plus the optional velocity gate,
+  both 9.21 chi-square two degrees of freedom; the 0.75 dominance score; the
+  200 m absolute join cap; R6's same-source exclusion, which allows a Lost
+  contribution to be rejoined and replaced, R15), per-contribution ageing and
+  removal (R12 to R14), automatic split by comparing each ranged or bearing
+  contribution's own dead-reckoned last report against the first contributor's
+  (R7, R35), operator merge/split (R17, R18, both re-estimating from the
+  surviving contributions' own last reports), bearing gating and refinement
+  (R33 to R36), and checkpoint schema 2. The correlator stayed inline in this
+  file rather than moving to a separate `TrackCorrelator.cs`; nothing observes
+  file layout, and splitting it out later is free to do if it helps.
+- Gating and the dominance score use each candidate's combined (DRMS) position
+  uncertainty as if it were isotropic (independent, equal variance in both
+  axes: variance ≈ DRMS²/2 per axis) rather than its true covariance, and the
+  dominance likelihood considers position only, not velocity. Documented as a
+  starting point, consistent with the plan's own D1/D3.
+- `TrackEstimator` gained three members needed by the manager, all additive
+  (no existing slice 2 test changed behavior): `Peek(atUtc)`, a non-mutating
+  version of `Predict` used to score several candidate tracks against one
+  report without committing to any of them; and `Export()`/`Restore(...)`,
+  a full internal-state snapshot (frame origin, clock, the raw state and
+  covariance, the latest bearing) for the checkpoint. The covariance is
+  flattened to a 16-element array in the snapshot, since `System.Text.Json`
+  does not serialize rectangular (`double[,]`) arrays.
+- Found and corrected test-design bugs while making the tests pass (the
+  tests, not the production code, per development workflow rule 2 — these
+  are wrong assumptions in the tests themselves, not requirement changes):
+  - Two tests disconnected a source and expected its contribution to reach
+    Lost; R14 holds a disconnected contribution at Stale indefinitely, so it
+    never does. Both (`BearingReport_AmbiguousBetweenTwoTracks...` and
+    `ANewSourceTrack_FromASourceWhoseEarlierContributionIsLost...`) now use a
+    short registered descriptor and let the contribution age to Lost while
+    staying connected instead.
+  - `KnownSourceTrack_UpdatesItsContributionAndTheTrack` expected a second
+    report to land exactly on the new position; under fusion it is pulled
+    toward it by the Kalman gain, not replaced outright. Now asserts movement
+    toward the new report, not onto it.
+  - `BearingContribution_DoesNotRefineThePoint_WhileARadarContributionIsActive`
+    compared positions a second apart with exact equality; the fused point
+    still dead-reckons forward with elapsed time regardless of the bearing.
+    The bearing report now shares the same measured instant as the ranged
+    reports, so only the bearing's own (non-)effect is being compared.
+  - `RegisteredSourceTimings_ApplyImmediately...` re-registered a source with
+    a removal time shorter than the time already elapsed, so the track was
+    removed outright instead of landing on Lost as asserted. The new
+    descriptor's removal time is now generous enough to observe Lost first.
+  - `TrackPipelineIntegrationTests` asserted a freshly created track's speed
+    immediately, echoing the raw AIS report; R8 reports speed/course only
+    once the fused velocity has converged, which one report does not reach.
+    The assertion is removed; the position-on-creation assertion (an exact
+    seed, not a fused update) is untouched and still holds.
+  - One production fix found this way, not a test fix: a new source track
+    joining a track to replace its own Lost contribution (R15) was adding the
+    new contribution without removing the Lost one, leaving both. Fixed in
+    `ApplyObservation`.
+
+Passing run (2026-10-28, Windows): `dotnet build Poseidon.slnx` had no
+warnings or errors. `dotnet test Tests/Core/CoreTracks.Tests/CoreTracks.Tests.csproj`:
+63 of 63 passed. `dotnet test Poseidon.slnx`: every project passed with zero
+failures, including `CoreUI.Tests` (28 of 28, including the previously
+timing-out `ShellViewportIntegrationTests.AisInput_ReachesTheShellViewportThroughTracksAndDisplay`)
+and both the Civilian and Military aggregates (no MSB4181 this time). Every
+slice 3 row above now passes.
+
+**Accepted by the user on 2026-10-28**, including the test and production
+fixes above. Slice 3 is done; slice 4 (ingress) has not started.

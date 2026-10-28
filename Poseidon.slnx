@@ -2,6 +2,21 @@
   <Folder Name="/Reference/">
     <Project Path="Reference/Data/Data.csproj" Id="32362aca-cc96-4c61-a8d8-63392e97a587" />
   </Folder>
+  <Folder Name="/Simulators/">
+    <Project Path="Simulators/AisSim/AisSim.csproj" />
+    <Project Path="Simulators/ComputerGeneratedForce/ComputerGeneratedForce.csproj" />
+    <Project Path="Simulators/DataLinkSim/DataLinkSim.csproj" />
+    <Project Path="Simulators/EchoSounderSim/EchoSounderSim.csproj" />
+    <Project Path="Simulators/EwSim/EwSim.csproj" />
+    <Project Path="Simulators/FireControlRadarSim/FireControlRadarSim.csproj" />
+    <Project Path="Simulators/GpsSim/GpsSim.csproj" />
+    <Project Path="Simulators/HullMountedSonarSim/HullMountedSonarSim.csproj" />
+    <Project Path="Simulators/NavigationRadarSim/NavigationRadarSim.csproj" />
+    <Project Path="Simulators/NdsSonarSim/NdsSonarSim.csproj" />
+    <Project Path="Simulators/SurveillanceRadarSim/SurveillanceRadarSim.csproj" />
+    <Project Path="Simulators/TowedArraySonarSim/TowedArraySonarSim.csproj" />
+    <Project Path="Simulators/VariableDepthSonarSim/VariableDepthSonarSim.csproj" />
+  </Folder>
   <Folder Name="/System/" />
   <Folder Name="/System/CMS/">
     <Project Path="System/CMS/CmsCore/CmsCore.csproj" />

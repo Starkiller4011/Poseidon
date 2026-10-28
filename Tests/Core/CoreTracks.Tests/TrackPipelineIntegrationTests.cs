@@ -51,7 +51,8 @@ public sealed class TrackPipelineIntegrationTests
         Assert.Equal("MV EXAMPLE", ais.Name);
         Assert.Equal(("Core.AIS", "366123456"), (ais.Contributions.Single().SourceId, ais.Contributions.Single().SourceTargetId));
         Assert.Equal(new GeodeticPosition(25.25, 55.5), ais.Position);
-        Assert.Equal(10 * 1852.0 / 3600, ais.SpeedOverGroundMetresPerSecond!.Value, 9);
+        // Speed/course are reported only once the fused velocity has converged (R8); a single report does not
+        // get there, so SpeedOverGroundMetresPerSecond is still null here rather than echoing the raw report.
 
         Assert.True((await SubmitAis(modules.Runtime, Ais(seconds: 10))).Accepted);
         var updated = await WaitForTracks(modules.Runtime, s => s.Tracks.Any(t => t.UpdateCount == 2));
