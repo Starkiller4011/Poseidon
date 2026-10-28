@@ -11,8 +11,13 @@ namespace Poseidon.Modules.CoreUI;
 
 public sealed class CoreUiModule : IModule, IShell
 {
+    private const string Unavailable = "Chart viewport unavailable";
     private Window? window;
     private DispatcherTimer? timer;
+    private ContentControl? viewportHost;
+    // The viewport provider (feature, generation) that is attached or was last attempted.
+    private (string FeatureId, long Generation)? viewportSource;
+    private bool attachingViewport;
     private bool stopping;
     internal Window? ActiveWindow => window;
     public IReadOnlyList<ModuleCapability> Capabilities => [];
@@ -39,10 +44,16 @@ public sealed class CoreUiModule : IModule, IShell
             panel.Children.Add(reload);
             panel.Children.Add(exit);
             panel.Children.Add(status);
+            viewportHost = new ContentControl { Margin = new Thickness(12) };
+            var sidePanel = new ScrollViewer { Content = panel };
+            Grid.SetColumn(sidePanel, 1);
+            var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("*,380") };
+            layout.Children.Add(viewportHost);
+            layout.Children.Add(sidePanel);
             window = new Window
             {
                 Title = "Poseidon", Width = 1000, Height = 650,
-                Content = new ScrollViewer { Content = panel },
+                Content = layout,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen
             };
             window.Closing += (_, e) =>
@@ -67,12 +78,63 @@ public sealed class CoreUiModule : IModule, IShell
                     string.Join("\n", snapshot.Features.Select(f => $"{f.FeatureId} -> {f.ProviderId}")) +
                     "\n\nDiagnostics:\n" + string.Join("\n", snapshot.Diagnostics);
             }
+            // Feature calls are rejected inside lifecycle methods, so the viewport is attached from the
+            // timer rather than during StartAsync.
             timer = new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Background,
-                (_, _) => Refresh());
+                (_, _) =>
+                {
+                    Refresh();
+                    _ = UpdateViewportAsync(host, host.Status);
+                });
             Refresh();
             window.Show();
         });
     }
+
+    private async Task UpdateViewportAsync(IModuleHost host, RuntimeStatus snapshot)
+    {
+        if (attachingViewport || viewportHost is null)
+            return;
+        var provider = snapshot.Features.FirstOrDefault(f => f.PointId == DisplayPoints.Viewport);
+        if (provider is null)
+        {
+            if (viewportSource is not null || viewportHost.Content is null)
+            {
+                viewportSource = null;
+                viewportHost.Content = Placeholder($"{Unavailable}: no module provides {DisplayPoints.Viewport}.");
+            }
+            return;
+        }
+        var source = (provider.FeatureId, snapshot.Generation);
+        // A failed provider is not retried until the provider or generation changes.
+        if (viewportSource == source)
+            return;
+        viewportSource = source;
+        viewportHost.Content = null;
+        attachingViewport = true;
+        try
+        {
+            var view = await host.InvokeAsync<IChartViewport, object>(provider.FeatureId, v => v.CreateView());
+            if (stopping || viewportHost is null || viewportSource != source)
+                return;
+            viewportHost.Content = view as Control ??
+                Placeholder($"{Unavailable}: {provider.ProviderId} returned an unsupported view.");
+        }
+        catch (Exception ex)
+        {
+            if (!stopping && viewportHost is not null && viewportSource == source)
+                viewportHost.Content = Placeholder($"{Unavailable}: {ex.Message}");
+        }
+        finally { attachingViewport = false; }
+    }
+
+    private static TextBlock Placeholder(string text) => new()
+    {
+        Text = text,
+        TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+        HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center
+    };
 
     internal static string FormatPackage(PackageStatus package)
     {
@@ -89,6 +151,11 @@ public sealed class CoreUiModule : IModule, IShell
             stopping = true;
             timer?.Stop();
             timer = null;
+            // Release the hosted view so no window keeps a retired provider's load context alive.
+            if (viewportHost is not null)
+                viewportHost.Content = null;
+            viewportHost = null;
+            viewportSource = null;
             window?.Close();
             window = null;
         });

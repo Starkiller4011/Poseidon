@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Poseidon.Core.Modules;
@@ -157,6 +158,50 @@ public sealed class ModulePackageTests : IDisposable
         Assert.NotEqual(first, second);
         File.Move(resource, Path.Combine(root, "renamed.txt"));
         Assert.NotEqual(second, ModulePackage.Fingerprint(root));
+    }
+
+    [Fact]
+    public void Fingerprint_RejectsDirectoryLinksWithoutTraversingThem()
+    {
+        WriteManifest();
+        var target = Path.Combine(Path.GetTempPath(), "Poseidon.PackageLinkTarget", Guid.NewGuid().ToString("N"));
+        var link = Path.Combine(root, "linked-content");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "outside.txt"), "outside");
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                start.ArgumentList.Add("/d");
+                start.ArgumentList.Add("/c");
+                start.ArgumentList.Add("mklink");
+                start.ArgumentList.Add("/J");
+                start.ArgumentList.Add(link);
+                start.ArgumentList.Add(target);
+                using var process = Process.Start(start)!;
+                process.WaitForExit();
+                Assert.True(process.ExitCode == 0, process.StandardError.ReadToEnd());
+            }
+            else
+            {
+                Directory.CreateSymbolicLink(link, target);
+            }
+
+            Assert.Throws<InvalidDataException>(() => ModulePackage.Fingerprint(root));
+        }
+        finally
+        {
+            if (Directory.Exists(link))
+                Directory.Delete(link);
+            Directory.Delete(target, recursive: true);
+        }
     }
 
     [Fact]

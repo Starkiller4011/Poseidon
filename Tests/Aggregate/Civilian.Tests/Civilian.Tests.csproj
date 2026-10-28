@@ -24,14 +24,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\Core.Tests\Core.Tests.csproj" />
-    <ProjectReference Include="..\..\Core\Charts.Tests\Charts.Tests.csproj" />
-    <ProjectReference Include="..\..\Core\AIS.Tests\AIS.Tests.csproj" />
-    <ProjectReference Include="..\..\Core\Tracks.Tests\Tracks.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\CoreCharts.Tests\CoreCharts.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\CoreAIS.Tests\CoreAIS.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\CoreTracks.Tests\CoreTracks.Tests.csproj" />
     <ProjectReference Include="..\..\Core\CoreUI.Tests\CoreUI.Tests.csproj" />
-    <ProjectReference Include="..\..\Core\Display.Tests\Display.Tests.csproj" />
-    <ProjectReference Include="..\..\Core\Navigation.Tests\Navigation.Tests.csproj" />
-    <ProjectReference Include="..\..\Core\Radar.Tests\Radar.Tests.csproj" />
-    <ProjectReference Include="..\..\Core\Sonar.Tests\Sonar.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\CoreDisplay.Tests\CoreDisplay.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\CoreNavigation.Tests\CoreNavigation.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\CoreRadar.Tests\CoreRadar.Tests.csproj" />
+    <ProjectReference Include="..\..\Core\CoreSonar.Tests\CoreSonar.Tests.csproj" />
   </ItemGroup>
 
   <Target Name="RunCivilianModuleSuites" AfterTargets="VSTest">

@@ -1,0 +1,154 @@
+name: Cross-Platform Build, Test, and Package
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  windows:
+    name: Windows build, test, and coverage
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore solution
+        run: dotnet restore Poseidon.slnx
+
+      - name: Build application and modules
+        run: dotnet build Core.Application.proj --configuration Release --no-restore
+
+      - name: Run all tests
+        run: >-
+          dotnet test Poseidon.slnx
+          --configuration Release
+          --no-restore
+          --logger "trx;LogFilePrefix=windows"
+          --results-directory artifacts/test-results/windows
+
+      - name: Collect civilian coverage
+        run: >-
+          dotnet test Tests/Aggregate/Civilian.Tests/Civilian.Tests.csproj
+          --configuration Release
+          --no-restore
+          --collect "XPlat Code Coverage"
+          --settings Tests/coverage.runsettings
+          --results-directory artifacts/coverage
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-test-results
+          path: artifacts/test-results/windows/**/*.trx
+          if-no-files-found: error
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: civilian-coverage
+          path: artifacts/coverage/**/coverage.cobertura.xml
+          if-no-files-found: error
+
+  linux:
+    name: ${{ matrix.name }} build, test, and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Arch Linux container
+            id: arch
+            image: archlinux:base
+          - name: RHEL 9 compatible container
+            id: rhel
+            image: registry.access.redhat.com/ubi9/ubi:latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate in ${{ matrix.name }}
+        run: >-
+          docker run
+          --rm
+          --volume "${{ github.workspace }}:/workspace"
+          --workdir /workspace
+          ${{ matrix.image }}
+          bash .github/scripts/ci-linux.sh ${{ matrix.id }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.id }}-test-results
+          path: artifacts/test-results/${{ matrix.id }}/**/*.trx
+          if-no-files-found: warn
+
+      - name: Upload application package
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.id }}-application
+          path: artifacts/publish/${{ matrix.id }}
+          if-no-files-found: error
+
+  windows-package:
+    name: Windows package
+    needs: windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore solution
+        run: dotnet restore Poseidon.slnx
+
+      - name: Publish host
+        run: >-
+          dotnet publish System/Core/Core/Core.csproj
+          --configuration Release
+          --no-restore
+          --output artifacts/publish/windows
+
+      - name: Stage modules
+        shell: pwsh
+        run: |
+          $publishDirectory = (Resolve-Path "artifacts/publish/windows").Path
+          dotnet build Core.Application.proj `
+            --configuration Release `
+            --no-restore `
+            "-p:ModuleDeploymentDirectory=$publishDirectory\modules"
+
+      - name: Upload application package
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-application
+          path: artifacts/publish/windows
+          if-no-files-found: error

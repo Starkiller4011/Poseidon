@@ -56,6 +56,22 @@ public sealed partial class ModuleRuntimeTests
         Assert.True(test.Runtime.Status.HasContribution(Layers.Id));
     }
 
+    // Display relies on this: it declares display.viewport and contributes its own viewport to it, so it
+    // needs no other module to be Active.
+    [Fact]
+    public async Task ModuleContributingToItsOwnPoint_IsActiveAndReportedOnThatPoint()
+    {
+        await using var test = new RuntimeTest();
+        test.Package("self", "self", feature: "self.feature");
+        ProvidePoint(test, "self", Layers with { Cardinality = PointCardinality.Single });
+        Contribute(test, "self", Layers.Id);
+        Assert.True(await test.Runtime.ReloadAsync());
+        Assert.Equal(PackageState.Active, test.State("self").State);
+        Assert.Contains(test.Runtime.Status.Features,
+            f => f.FeatureId == "self.feature" && f.ProviderId == "self" && f.PointId == Layers.Id);
+        Assert.StartsWith("self:", await test.Read("self.feature"));
+    }
+
     [Fact]
     public async Task RemovingPointProvider_BlocksItsContributors()
     {
