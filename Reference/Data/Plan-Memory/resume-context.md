@@ -1,6 +1,6 @@
 # Resume context
 
-Updated: 2026-10-26
+Updated: 2026-10-28 (slice 3 coded)
 
 Read this at the start of every session, then
 [development-workflow.md](development-workflow.md), then
@@ -70,95 +70,107 @@ through tests then code with a gate after each.
 | Step | State | Detail |
 |---|---|---|
 | 1. Plan | Done, approved by the user on 2026-10-26 | Includes the bearing amendment (21.12) and the sequencing change (21.5) |
-| 2. Tests | Slice 1 done and approved | Remaining: slices 2 to 5 |
-| 3. Code | Slice 1 done, waiting for acceptance | Full solution 761 of 761 passing on Windows. Remaining: slices 2 to 6; the contracts draft in `features/m1-e-track-fusion-contracts-draft.md` is a starting point for slices 3 and 4 |
+| 2. Tests | Slices 1 to 3 done and approved | Next: slice 4 (ingress) |
+| 3. Code | Slices 1 to 3 merged/accepted | Remaining: slices 4 to 6; the contracts draft in `features/m1-e-track-fusion-contracts-draft.md` is a starting point for slice 4 |
 
-Progress: slice 1 (contracts) is complete. Gate: waiting for the user to accept
-slice 1, then the order to write the slice 2 (estimator) tests.
+Progress: slice 3 (manager) is done and accepted. Gate: waiting for the order
+to start slice 4 (ingress) Step 2 (tests).
+
+A second feature is now also in flight, by the user's explicit choice to
+interleave them: [sensor simulators and ComputerGeneratedForce](features/sensor-simulators.md)
+(a `Simulators/` solution folder of standalone sensor-simulator processes, a
+`ComputerGeneratedForce` world server, and a new wire-protocol listener in
+`CoreAIS`/`CoreRadar`/`CoreSonar`).
+
+| Step | State | Detail |
+|---|---|---|
+| 1. Plan | Done, approved by the user on 2026-10-27 | Includes the `NdsSonarSim` civilian correction |
+| 2. Tests | Not started | May proceed alongside M1-E slices 3 to 6, on the user's order |
+| 3. Code | Not started | Waits until M1-E (slices 3 to 6) is done |
+
+Progress: plan approved. Gate: waiting for the order to start Step 2 (tests)
+for either feature (M1-E slice 3, or sensor-simulators, or both).
 
 ## Last changes made
 
-Feature and step: M1-E fusion rework, slice 1 Step 3 (code). Gate: the user
-ordered the slice 1 implementation on 2026-10-26.
+Feature and step: M1-E fusion rework, slice 3 accepted (Step 3 code already
+done), on branch `feature/core-track-system`.
 
-- Implemented `TrackSourceDescriptor.Validate` (`Tracks.cs`), the R16a rules in
-  `TrackObservationRules.cs` and `TrackMotion.Predict` (`TrackMotion.cs`).
-  Corrected the comments on `RadarNormalizer` and `RadarTargetReport`.
-- `dotnet build Core.Application.proj`: no warnings or errors. `dotnet test
-  Poseidon.slnx`: 761 of 761 passed (677 before, plus the 42 new tests counted
-  twice by the solution run). Recorded in the feature file's ledger.
+- The user accepted slice 3, including the test and production fixes, on
+  2026-10-28.
+- Implemented `TrackManager` (correlation, contributions, per-contribution
+  lifecycle, automatic split, operator merge/split, bearing association and
+  kind changes, checkpoint schema 2) and added `Peek`/`Export`/`Restore` to
+  `TrackEstimator` (additive; no slice 2 test's behavior changed). Full
+  design in the feature file's Step 3 ledger entry, including the gating/
+  dominance-score simplifications (isotropic uncertainty, position-only
+  likelihood) documented as starting points.
+- Found and fixed six test-design bugs while making the tests pass (detailed
+  in the ledger, not repeated here), plus one real production bug: rejoining
+  a source whose earlier contribution was Lost (R15) added the new
+  contribution without removing the old one, leaving both; fixed in
+  `ApplyObservation`.
+- `dotnet build Poseidon.slnx`: no warnings or errors. `dotnet test
+  Tests/Core/CoreTracks.Tests/CoreTracks.Tests.csproj`: 63 of 63 passed.
+  `dotnet test Poseidon.slnx`: every project passed with zero failures,
+  including `CoreUI.Tests` (28/28, the previously timing-out
+  `ShellViewportIntegrationTests` test now passes) and both aggregates
+  (no MSB4181 this time). Recorded in the feature file's ledger.
+- Nothing is committed yet (working tree has the new and edited files,
+  uncommitted, on `feature/core-track-system`).
 
-Earlier in the same session (open questions and slice 1 tests):
+Earlier in the same session: slice 3 Step 2 (tests) was written against a
+stub `TrackManager` and failed as expected; full detail is in the feature
+file's own Step 2 ledger entry, not repeated here.
 
-- The user approved the documentation restructuring (described below).
-- Recorded in `features/m1-e-track-fusion.md`: the 200 m join and split distance
-  and the declared peak report rates are kept as starting values and tuned
-  later, because no real data has been available (21.4, 21.10, "Still open").
-- Searched for civilian non-geodetic sources and recorded the findings and a
-  proposed answer in the new section 21.11. In short: range-and-bearing sources
-  are common (ARPA `TTM`, cameras) and need only own-ship conversion. Bearing-only
-  civilian sources exist only in search and rescue (direction finders). No
-  civilian source needs a bearings-only estimator. The proposal keeps the
-  estimator in CmsTracks and leaves slice 1 unchanged.
-- The user then decided bearing tracks move back into CoreTracks, and the
-  estimator stays in CMS (D9). I wrote the plan amendment (section 21.12:
-  R16a, R33 to R35, contract and slice changes, four questions) and updated
-  `features/cms-backlog.md` to match.
-- The user answered the four questions (bearings fuse into point tracks;
-  ambiguity leaves a standalone Bearing track until the operator merges it or
-  the ambiguity clears; losing range makes a Hybrid track; the line starts at
-  the displayed own ship, otherwise the report's). I revised 21.12 to match.
-- The user answered the last three: cross-fixing is CMS; bearings are
-  supplemental and refine the point only when the track's ranged sources are
-  all AIS; the angular gate suits cameras but not EW, so Core leaves a seam for
-  a CMS EW method. Everything is folded into 21.1, 21.2, 21.4, 21.5 and 21.6.
-- The user ordered Step 2. I wrote the slice 1 tests
-  (`Tests/Shared/Contracts.Tests/TrackSourceDescriptorTests.cs`,
-  `TrackMotionTests.cs`, new cases in `TrackObservationRulesTests.cs`, the
-  rewritten radar no-pose test) and the compile-only stubs (`Tracks.cs`,
-  `TrackMotion.cs`), adjusted one superseded manager test, and moved the
-  `Track` reshape to slice 3 and the relay and ingestion removal to slice 4
-  (21.5).
+Earlier in the same session (sensor-simulators plan, approved, no further
+work since):
 
-Earlier in the same session (documentation restructuring, approved):
+- Wrote the plan [features/sensor-simulators.md](features/sensor-simulators.md)
+  for the `Simulators/` solution folder (13 standalone console-app project
+  skeletons the user added outside this session: `AisSim`,
+  `ComputerGeneratedForce`, `DataLinkSim`, `EchoSounderSim`, `EwSim`,
+  `FireControlRadarSim`, `GpsSim`, `HullMountedSonarSim`,
+  `NavigationRadarSim`, `NdsSonarSim`, `SurveillanceRadarSim`,
+  `TowedArraySonarSim`, `VariableDepthSonarSim`; none yet added to
+  `Poseidon.slnx`). The plan covers civilian simulators first (`AisSim`,
+  `NavigationRadarSim`, `EchoSounderSim`, `NdsSonarSim`, `GpsSim` — corrected
+  2026-10-27: `NdsSonarSim` is a civilian fish-finding/seabed-mapping sonar,
+  not military) plus `ComputerGeneratedForce` as a live world server,
+  wire-protocol simulated connections end to end, and the new Poseidon-side
+  listeners this requires in `CoreAIS`/`CoreRadar`/`CoreSonar`. The remaining
+  7 CMS/military Sim projects stay reserved, empty scaffolding until the CMS
+  backlog starts. Linked from the master plan's features table.
+- Nothing else is committed yet. `Simulators/` is untracked (`git status`);
+  the user has not asked for it to be added or committed.
 
-- Created [development-workflow.md](development-workflow.md) (plan, tests, code,
-  gates, this resume context, templates).
-- Split the former single plan `2026-10-24-poseidon-application-plan.md` into
-  [poseidon-master-plan.md](poseidon-master-plan.md) and six feature files under
-  `features/`: M1-A, M1-B, M1-C, M1-E as built, M1-E fusion rework, and the CMS
-  backlog, plus the saved contracts draft for the fusion rework. The old file
-  was removed once its content had moved (its history is in git).
-- Moved `Reference/Data/Feature-Mappings` (the chart input data format
-  mappings) to `Reference/Data/Plan-Memory/Feature-Mappings` and referenced it in
-  the master plan, the M1-C file and the README.
-- Added the "Feature in progress" section to this file and to the workflow
-  template.
-- The README now links to the master plan.
-- The code is unchanged by this work. The verified state of the code (which
-  also includes the M1-E single-source track pipeline and Display tracks
-  overlay) is: `dotnet build Core.Application.proj` succeeded with no warnings
-  and `dotnet test Poseidon.slnx` passed 677 tests with no failures on
-  2026-10-26. That verification predates the documentation changes.
-- Everything is uncommitted: the M1-E code and tests (new contracts, manager,
-  relay, adapters, Display overlay, integration tests) and all the
-  documentation changes. Only the earlier Node 24 workflow update and review
-  fixes were merged before this session's later work.
+Earlier in the same session: M1-E slice 2 (estimator) was implemented and
+accepted, including two test corrections found while implementing it; full
+detail is in the feature file's own Step 3 ledger entry, not repeated here.
+
+Earlier (before this session; slice 1, now merged):
+
+- M1-E fusion slice 1 (contracts: `TrackSourceDescriptor.Validate`, the R16a
+  rules in `TrackObservationRules`, `TrackMotion.Predict`) was implemented,
+  reviewed and merged into `dev` as PR #2 (`8f9ef10`, `8c67e3a`, merge
+  `e060785`). The decisions behind it (the bearing-tracks-in-Core amendment,
+  D9, 21.12) are recorded in the feature file, not repeated here.
 
 ## What needs to be done next
 
-1. **Slice 1 acceptance.** The user accepts slice 1 (contracts).
-2. **Slice 2 (estimator), Step 2 (tests)** on the user's order. Write numeric
-   tests for frame conversion and the Kalman filter: convergence, weighting,
-   late updates, rebasing far from the origin, the scalar bearing update (only
-   while every Active ranged contribution is AIS, R35) and hybrid
-   extrapolation with growing uncertainty (R36). See
-   [features/m1-e-track-fusion.md](features/m1-e-track-fusion.md) sections 21.4
-   and 21.5. The saved draft of the new contracts is in
-   [features/m1-e-track-fusion-contracts-draft.md](features/m1-e-track-fusion-contracts-draft.md).
-2. Tuning (later, when real data is available): the 200 m join and split
+1. **Slice 4 (ingress) Step 2 (tests)**, on the user's order: the publisher,
+   per-source queues and consumer thread, the operations feature exposed
+   through the module, manifests, adapters as publishers, radar rotation
+   rate, statistics, the throughput baseline (R22 to R26, R29 to R31, 21.5
+   item 4). The contracts draft in
+   `features/m1-e-track-fusion-contracts-draft.md` is a starting point.
+2. **Sensor-simulators Step 2 (tests)**, on the user's order, may proceed
+   alongside the above (plan approved 2026-10-27); its Step 3 (code) still
+   waits until M1-E (slices 3 to 6) is done.
+3. Slices 5 and 6 of M1-E (consumers, close-out) have not started; see 21.5.
+4. Tuning (later, when real data is available): the 200 m join and split
    distance, the declared peak report rates and the other starting values in
    section 21.4.
-3. M1-E as built is not accepted until the rework is done and CI passes on
+5. M1-E as built is not accepted until the rework is done and CI passes on
    Windows, Arch Linux and RHEL-compatible containers; the M1-C and M1-F
    planning has not started.

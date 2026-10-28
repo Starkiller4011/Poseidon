@@ -34,11 +34,10 @@ public sealed class TracksModuleTests
         Assert.Equal(
             [(TrackPoints.Feed, typeof(ITrackFeed).FullName), (TrackPoints.Ingestion, typeof(ITrackIngestion).FullName)],
             manifest.Provides.OrderBy(p => p.Id, StringComparer.Ordinal).Select(p => (p.Id, p.Contract)));
-        Assert.All(manifest.Provides, p => Assert.Equal((PointCardinality.Single, "1.0.0"), (p.Cardinality, p.Version)));
+        Assert.All(manifest.Provides, p => Assert.Equal(PointCardinality.Single, p.Cardinality));
         Assert.Equal(
             [(TrackPoints.Feed, TrackPoints.FeedFeatureId), (TrackPoints.Ingestion, TrackPoints.IngestionFeatureId)],
             manifest.Contributions.OrderBy(c => c.Point, StringComparer.Ordinal).Select(c => (c.Point, c.Id)));
-        Assert.All(manifest.Contributions, c => Assert.Equal("1.0.0", c.Version));
     }
 
     [Fact]

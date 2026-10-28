@@ -15,8 +15,9 @@ public sealed class TrackLayerTests
     private static readonly DateTimeOffset Time = new(2026, 10, 26, 12, 0, 0, TimeSpan.Zero);
 
     private static Track Track(string id, bool positioned = true)
-        => new(id, "Core.AIS", id, null, TrackState.Active, positioned ? new GeodeticPosition(25, 55) : null, null, null,
-            null, null, null, Time, Time, Time, 1, 1, 1);
+        => new(id, null, positioned ? TrackKind.Point : TrackKind.Bearing,
+            TrackState.Active, positioned ? new GeodeticPosition(25, 55) : null, null, null, null,
+            null, null, Time, Time, Time, 1, 1, []);
 
     private static IChartViewport ViewportOf(IModule module) => (IChartViewport)module.Features[ViewportFeature];
 

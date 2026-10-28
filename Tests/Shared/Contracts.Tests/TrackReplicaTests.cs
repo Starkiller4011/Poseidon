@@ -33,8 +33,8 @@ public sealed class TrackReplicaTests
     }
 
     private static Track Track(string id, long revision, double latitude = 10)
-        => new(id, "Core.AIS", id, null, TrackState.Active, new GeodeticPosition(latitude, 20), null, null, null, null,
-            null, Time, Time, Time, revision, 1, revision);
+        => new(id, null, TrackKind.Point, TrackState.Active, new GeodeticPosition(latitude, 20), null, null, null,
+            null, null, Time, Time, Time, 1, revision, []);
 
     private static TrackSnapshot Snapshot(string epoch, long revision, params Track[] tracks)
         => new(epoch, revision, tracks, []);

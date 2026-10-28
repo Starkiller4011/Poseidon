@@ -13,15 +13,8 @@ public sealed class TrackPipelineIntegrationTests
     private static AisPositionReport Ais(int seconds = 0)
         => new(366123456, Measured.AddSeconds(seconds), 25.25, 55.5, 10, 90, 91, "MV EXAMPLE@@");
 
-    private static RadarTargetReport Radar(int seconds = 0)
-        => new(12, Measured.AddSeconds(seconds), 1852, 0, BearingReference.True,
-            new SensorPose(new GeodeticPosition(25.25, 55.5), 0));
-
     private static async Task<SubmissionResult> SubmitAis(ModuleRuntime runtime, AisPositionReport report)
         => await runtime.InvokeAsync<IAisInput, SubmissionResult>(SensorPoints.AisInputFeatureId, i => i.Submit(report));
-
-    private static async Task<SubmissionResult> SubmitRadar(ModuleRuntime runtime, RadarTargetReport report)
-        => await runtime.InvokeAsync<IRadarInput, SubmissionResult>(SensorPoints.RadarInputFeatureId, i => i.Submit(report));
 
     private static Task<TrackSnapshot> Snapshot(ModuleRuntime runtime)
         => runtime.InvokeAsync<ITrackFeed, TrackSnapshot>(TrackPoints.FeedFeatureId, f => f.GetSnapshot());
@@ -40,8 +33,10 @@ public sealed class TrackPipelineIntegrationTests
     }
 
     [Fact]
-    public async Task AisAndRadarInput_BecomeManagedTracks_AndRepeatReportsUpdateTheSameTrack()
+    public async Task AisInput_BecomesAManagedTrack_AndRepeatReportsUpdateTheSameTrack()
     {
+        // The AIS+radar real-runtime fusion scenario (one vessel, two sources, one track) is slice 5's
+        // real-runtime fusion scenario (R27, R28); this keeps the single-source path working in the meantime.
         await using var modules = new DeployedModules();
         modules.Deploy("CoreTracks", "CoreAIS", "CoreRadar", "CoreSonar");
         Assert.True(await modules.Runtime.ReloadAsync());
@@ -53,21 +48,15 @@ public sealed class TrackPipelineIntegrationTests
         Assert.True((await SubmitAis(modules.Runtime, Ais())).Accepted);
         var first = await WaitForTracks(modules.Runtime, s => s.Tracks.Count == 1);
         var ais = Assert.Single(first.Tracks);
-        Assert.Equal(("Core.AIS", "366123456", "MV EXAMPLE"), (ais.SourceId, ais.SourceTargetId, ais.Name));
+        Assert.Equal("MV EXAMPLE", ais.Name);
+        Assert.Equal(("Core.AIS", "366123456"), (ais.Contributions.Single().SourceId, ais.Contributions.Single().SourceTargetId));
         Assert.Equal(new GeodeticPosition(25.25, 55.5), ais.Position);
-        Assert.Equal(10 * 1852.0 / 3600, ais.SpeedOverGroundMetresPerSecond!.Value, 9);
+        // Speed/course are reported only once the fused velocity has converged (R8); a single report does not
+        // get there, so SpeedOverGroundMetresPerSecond is still null here rather than echoing the raw report.
 
         Assert.True((await SubmitAis(modules.Runtime, Ais(seconds: 10))).Accepted);
         var updated = await WaitForTracks(modules.Runtime, s => s.Tracks.Any(t => t.UpdateCount == 2));
         Assert.Equal(ais.Id, Assert.Single(updated.Tracks).Id);
-
-        // A radar target at the same place is a separate track: sources are never merged on proximity.
-        Assert.True((await SubmitRadar(modules.Runtime, Radar())).Accepted);
-        var both = await WaitForTracks(modules.Runtime, s => s.Tracks.Count == 2);
-        var radar = Assert.Single(both.Tracks, t => t.SourceId == "Core.Radar");
-        Assert.NotEqual(ais.Id, radar.Id);
-        Assert.Equal(25.25 + 1.0 / 60, radar.Position!.LatitudeDegrees, 3);
-        Assert.Equal(new PolarMeasurement(1852, 0, BearingReference.True), radar.LatestMeasurement);
     }
 
     [Fact]
@@ -116,7 +105,7 @@ public sealed class TrackPipelineIntegrationTests
         var after = await WaitForTracks(modules.Runtime, s => s.Tracks.Any(t => t.UpdateCount == 2));
         var track = Assert.Single(after.Tracks);
         Assert.Equal((before.Tracks[0].Id, before.Epoch), (track.Id, after.Epoch));
-        Assert.Equal(2, track.LastSequence);
+        Assert.Equal(2, track.Contributions.Single().LastSequence);
     }
 
     [Fact]

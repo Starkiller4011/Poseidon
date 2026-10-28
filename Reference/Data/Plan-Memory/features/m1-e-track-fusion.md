@@ -2,20 +2,20 @@
 
 Milestone: M1-E rework (prerequisite: the M1-E track pipeline as built)
 Status: **Plan approved by the user on 2026-10-26, including the amendment
-moving bearing tracks into CoreTracks (21.12, R16a and R33 to R37). Slice 1
-(contracts) is coded and the full solution passes, 761 of 761 (see the
-ledger). It is waiting for the user's acceptance; slices 2 to 6 have not
-started.** An earlier implementation attempt was reverted at the user's
-request. Apart from slice 1, the code is still at the verified state described
-in [m1-e-track-pipeline.md](m1-e-track-pipeline.md) (single-source tracks,
+moving bearing tracks into CoreTracks (21.12, R16a and R33 to R37). Slices 1
+to 3 are accepted (slice 3 on 2026-10-28, including the test and production
+fixes in its ledger entry). Slices 4 to 6 have not started.** An earlier implementation attempt of
+the whole rework was reverted at the user's request. Apart from slices 1 and
+2, the code is still at the verified state described in
+[m1-e-track-pipeline.md](m1-e-track-pipeline.md) (single-source tracks,
 sensor-side relay).
 
 This file holds the track system requirements confirmed on 2026-10-26 (former
 section 20) and the implementation plan for the fusion rework (former section
-21). It follows [development-workflow.md](../development-workflow.md): the next
-step is Step 2 for slice 2, writing the estimator tests, which starts only
-when the user gives the order. Former section numbers are kept in headings so
-older references remain traceable (see the section map in the master plan).
+21). It follows [development-workflow.md](../development-workflow.md): slice 2
+is at its Step 2 gate, waiting for the user to accept the tests before Step 3
+(code) starts. Former section numbers are kept in headings so older references
+remain traceable (see the section map in the master plan).
 
 The reworked contract draft written before the revert is kept in this
 repository in
@@ -721,3 +721,312 @@ Assumed while writing the tests (approved with the implementation order):
   own-ship requirements apply only when the report has no position.
 - `Predict` at the measured time, or with zero speed, returns the track's
   position.
+
+### Slice 2 (estimator): Step 2, tests written 2026-10-27
+
+Design assumed while writing the tests, needed to give the estimator a concrete
+shape before any numeric test can be written (the approved plan fixes the
+approach in section 21 "Estimate" and the starting values in 21.4; this fixes
+the implementation seam):
+
+- A new internal type, `TrackEstimator` (`System/Core/CoreTracks/TrackEstimator.cs`,
+  namespace `Poseidon.Modules.Tracks`), holds one track's filter state: the local
+  east/north frame's current origin, position and velocity and their
+  covariance, and the latest bearing contribution if any. It is constructed
+  from an initial position and its uncertainty (R8's starting point, a report
+  that already has a position) and is not used for a Bearing track (R33),
+  which has no position until a ranged report arrives (slice 3).
+- State is `[east, north, veast, vnorth]` with a full 4x4 covariance so a
+  bearing update, which couples east and north, can update both from one
+  scalar measurement; position and velocity measurements are applied as
+  sequential scalar updates (north, then east; north, then east) as the plan
+  specifies, each a standard scalar Kalman update (gain, state and covariance)
+  against the shared state.
+- Process noise between updates uses the continuous white-noise-acceleration
+  discretization (`q = processNoiseAcceleration²`, applied per axis as
+  `[[dt³/3, dt²/2], [dt²/2, dt]]` on each axis's position/velocity block, no
+  cross terms between east and north). The default is the 0.3 m/s² starting
+  value (21.4).
+- The filter's own clock never moves backward. A call that would advance to an
+  earlier time than the filter's current state time predicts zero elapsed time
+  instead (R9): a late report is applied as a measurement update at the
+  current state time, not rolled back.
+- The frame re-anchors (origin becomes the current estimate, position resets to
+  the origin, velocity and covariance are unchanged) whenever advancing the
+  filter leaves it about 20 km from its origin (21.7), transparently to the
+  public surface.
+- A bearing measurement is linearized at the current predicted position
+  (bearing from the own-ship position to the estimate) and applied as one
+  scalar update against the full state, so it can move both east and north
+  together; a bearing contribution's effect on velocity is through the same
+  covariance, not a separate step. It always updates the recorded bearing
+  (`Estimate.BearingDegrees` and related fields, for a Hybrid track's display
+  line); it refines position only when the caller passes
+  `hasActiveRangedContribution: true` (R35; the AIS-only nuance is the
+  manager's decision in slice 3, not the estimator's).
+- `TrackEstimate` (a new internal record, not the public `Track`) is the
+  estimator's output: position and its uncertainty, velocity and its
+  uncertainty once known, and the latest bearing. Mapping it onto the public
+  `Track` (including the 3 m/s velocity-reporting threshold and the Hybrid
+  kind) is slice 3.
+
+Tests (`Tests/Core/CoreTracks.Tests/TrackEstimatorTests.cs`), against the
+internal `TrackEstimator` (visible to the test project via the existing
+`InternalsVisibleTo`):
+
+| Requirement | Test |
+|---|---|
+| R8 (convergence) | `UpdatePosition_RepeatedConsistentMeasurements_ConvergeNearTheMeasurementWithShrinkingUncertainty` |
+| R8 (weighting) | `UpdatePosition_WeightsByUncertainty_ATighterMeasurementPullsTheEstimateHarder` |
+| R9 (late reports) | `UpdatePosition_ALateMeasurement_IsAppliedAtTheCurrentTime_WithoutBreakingTheFilter` |
+| 21.7 (rebasing) | `Estimate_StaysAccurate_AsTheTrackDriftsWellBeyondTheFramesRebaseDistance` |
+| R34, R35 (bearing update) | `UpdateBearing_WithAnActiveRangedContribution_NudgesThePositionTowardTheBearingLine`, `UpdateBearing_WithoutAnActiveRangedContribution_RecordsTheBearingButNeverMovesThePosition` |
+| R36 (hybrid extrapolation) | `Predict_WithoutMeasurements_GrowsPositionUncertaintyMonotonically_ForHybridExtrapolation` |
+| R9 (never rolling backward) | `Predict_ReturnsNothingNewWhenCalledAtOrBeforeTheCurrentTime_NeverRollingBackward` |
+
+Failing run (2026-10-27): all 8 new tests fail with `NotImplementedException`
+from the stub `TrackEstimator` (`Estimate`, `Predict`, `UpdatePosition`,
+`UpdateVelocity`, `UpdateBearing` all throw; the constructor stores nothing).
+`dotnet test Tests/Core/CoreTracks.Tests/CoreTracks.Tests.csproj`: 8 failed of
+41 (the other 33, from the as-built manager, module and pipeline tests, are
+unaffected). `dotnet build Core.Application.proj`: no warnings or errors.
+`dotnet test Poseidon.slnx`: Contracts.Tests, Core.Tests, CoreCharts.Tests,
+CoreAIS.Tests, CoreUI.Tests (28/28), CoreDisplay.Tests (18/18),
+CoreNavigation.Tests (8/8), CoreRadar.Tests (23/23) and CoreSonar.Tests (8/8)
+all pass; the Civilian aggregate's own module-suite rerun
+(`RunCivilianModuleSuites`) surfaces the same CoreTracks failure as an
+MSBuild MSB4181 (its usual way of propagating an inner suite failure, not a
+new problem: the same mechanism would have surfaced slice 1's Contracts.Tests
+and CoreRadar.Tests failures through the same target).
+
+### Slice 2 (estimator): Step 3, code written 2026-10-27
+
+The user accepted the slice 2 tests and design and ordered the implementation
+on 2026-10-27.
+
+- `TrackEstimator` is implemented exactly to the Step 2 design: the 4-state
+  `[east, north, veast, vnorth]` filter with a full 4x4 covariance, the
+  continuous white-noise-acceleration process noise per axis, sequential
+  scalar position and velocity updates (north then east), the bearing update
+  linearized at the current predicted position and gated on
+  `hasActiveRangedContribution`, the filter clock that never moves backward
+  (a late report predicts zero elapsed time instead), and the ~20 km frame
+  re-anchor. `PositionUncertaintyMetres` and `VelocityUncertaintyMetresPerSecond`
+  are each axis's combined DRMS figure (`sqrt(Pxx + Pyy)`), not a single axis's
+  own sigma.
+- Two of the slice 2 tests had a wrong assumption, found while making them
+  pass, and were corrected rather than the production code (development
+  workflow rule 2: a wrong test is fixed and the reason recorded here, not
+  silently adjusted):
+  - `UpdatePosition_RepeatedConsistentMeasurements_ConvergeNearTheMeasurementWithShrinkingUncertainty`
+    compared the converged combined (DRMS) uncertainty against a single
+    report's own one-axis uncertainty (10 m) directly; a DRMS over two axes is
+    `sqrt(2)` times any one axis's figure even when each axis individually
+    converges tighter than the measurement, so the comparison is now against
+    `10 * sqrt(2)`, the single report's own uncertainty expressed the same way.
+  - `Predict_WithoutMeasurements_GrowsPositionUncertaintyMonotonically_ForHybridExtrapolation`
+    fed one position-plus-velocity report, then dead-reckoned against the
+    reported 5 m/s exactly; a single report converges the fused velocity only
+    to within its Kalman gain (here, about 99% of the way), so dead reckoning
+    at exactly 5 m/s over 1,000 s was never going to match within 50 m. The
+    test now feeds ten consistent reports of a target actually moving at 5 m/s
+    east (position advancing to match, not held at the origin) before
+    extrapolating, which is also a closer match to what a real Hybrid track
+    looked like before it lost its range.
+- Both corrected tests, and the other six, pass unchanged in behavior from the
+  approved design; no requirement or design decision changed.
+
+Passing run (2026-10-27, Windows): `dotnet build Core.Application.proj` had no
+warnings or errors. `dotnet test Tests/Core/CoreTracks.Tests/CoreTracks.Tests.csproj`:
+41 of 41 passed (the 8 new estimator tests plus the unaffected 33). `dotnet test
+Poseidon.slnx`: every test project passed with zero failures, including the
+Civilian and Military aggregates (whose module-suite rerun no longer hits the
+MSB4181 collateral from slice 2's prior failing state) and the CMS smoke
+projects. Every slice 2 row above now passes.
+
+**Accepted by the user on 2026-10-27**, including the two test corrections
+above. Slice 2 is done; slice 3 (manager) has not started.
+
+### Slice 3 (manager): Step 2, tests written 2026-10-27
+
+Scope: R1 to R21 and R33 to R36 (correlator including bearing association,
+contributions, lifecycle, kind changes, automatic split, operator merge/split,
+checkpoint schema 2). The ingress/queue swap, the publisher/operations module
+points, adapters-as-publishers and the throughput baseline (R22 to R26, R29 to
+R31) are slice 4 and are not touched here.
+
+Contract and policy shapes written for real (data shape, not the behavior
+under test), per the approved design (21.2, 21.12):
+
+- `Track` is reshaped: `SourceId`, `SourceTargetId` and `LastSequence` are
+  replaced by `Kind` (`Point`, `Bearing`, `Hybrid`), a nullable `Bearing`
+  (`TrackBearing`: true bearing, uncertainty, own-ship position, measured
+  time) and `Contributions` (`TrackContribution`: source ID, source-local ID,
+  whether it is ranged, state, joined/measured/updated times, last sequence,
+  update count). Position is null exactly when `Kind` is `Bearing`. `Track`
+  keeps explicit value equality (contribution lists compare by content).
+- `ITrackOperations` and `TrackOperationResult` are added (R17, R18); `tracks.
+  operations` and the module's own exposure of it are slice 4 (`TracksModule`
+  is unchanged this slice, still only exposing `tracks.ingestion` and
+  `tracks.feed`, consistent with 21.3).
+- `TrackPolicy` (internal, `CoreTracks`) is reshaped from one global ageing
+  policy into the fallback for unregistered sources
+  (`Unregistered{Stale,Lost,Remove}After`, default uncertainties) plus the
+  correlation/estimation tunables from 21.4 (process noise, the 9.21 position
+  and velocity gates, the 0.75 dominance threshold, the 200 m maximum join
+  distance, the 3-update split confirmation count, the 6.63 bearing gate, the
+  3 m/s velocity-reported-when threshold, the 10 m/s initial velocity
+  uncertainty). Per-source timings and defaults come from each source's
+  registered `TrackSourceDescriptor` instead (R11); a new internal
+  `RegisterSource(TrackSourceDescriptor)` is `TrackManager`'s registration
+  entry point for this slice (`ITrackPublisher.Register` wires to it in
+  slice 4).
+- `TrackManager` keeps implementing `ITrackIngestion` unchanged (`Submit`,
+  `SubmitBatch`, `ReportSourceHealth`) and now also `ITrackOperations`
+  (`Merge`, `Split`). Every behavior-bearing member is a Step 2 stub throwing
+  `NotImplementedException`, except `Advance()`, which is a no-op: it runs on
+  `TracksModule`'s own background timer, and throwing there would crash that
+  timer instead of failing a single test cleanly. `GetSnapshot`/`GetChanges`
+  return a fixed empty result rather than throw, for the same reason (nothing
+  else calls them from a background thread today, but keeping every read path
+  exception-free is simpler to reason about than deciding path by path).
+
+Tests (`Tests/Core/CoreTracks.Tests/TrackManagerTests.cs`, rewritten per 21.6:
+the former E2 "nearby positions stay separate" premise and its variants are
+removed, not patched, since fusion makes the opposite true; `Tests/Core/
+CoreTracks.Tests/TrackBearingTests.cs`, new, for R33 to R36):
+
+| Requirement | Tests |
+|---|---|
+| R1 (invalid, carried over) | `InvalidObservations_AreRejectedWithoutCreatingTracks` |
+| R2 | `UnknownSourceTrack_ThatCorrelatesWithNothing_CreatesATrackWithAGeneratedNumber`, `KnownSourceTrack_UpdatesItsContributionAndTheTrack` |
+| R3 | `ANewSourceTrack_InsideTheGateOfExactlyOneCandidate_JoinsItAsAContribution` |
+| R4 | `ANewSourceTrack_OutsideEveryGate_CreatesANewTrack` |
+| R5 | `ANewSourceTrack_WellInsideOneCandidateAndFarFromAnother_JoinsTheDominantOne`, `ANewSourceTrack_EquidistantBetweenTwoCandidates_IsAmbiguousAndCreatesANewTrack` |
+| R6 | `ATrack_NeverGainsASecondActiveContributionFromTheSameSource` |
+| R7 | `ContributionsThatStopAgreeing_SplitAfterTheConfirmationCount_NotOnATransientDisagreement` |
+| R8 | `JoiningContributions_FuseIntoOneEstimate_WeightedByTheirReportedUncertainty` |
+| R9 | `ALateReportFromAnotherSource_IsAppliedWithoutBreakingTheTrack` |
+| R10 (carried over) | `ExactRepeatIsDuplicate_AndOlderObservationIsOutOfOrder_WithoutChangingTheTrack` |
+| R11 | `RegisteredSourceTimings_ApplyImmediately_AndSupersedeTheUnregisteredDefaults`, `UnregisteredSource_UsesThePolicyDefaults` |
+| R12 | `Track_IsActiveWhileAnyContributionIsActive_StaleWhenNoneAreActive_LostWhenAllAre` |
+| R13 | `ATrack_IsRemovedOnlyWhenItsLastContributionIsRemoved_AndKeepsItsNumberMeanwhile` |
+| R14 (carried over, per contribution) | `DisconnectedSource_HoldsItsContributionsAtStale_NotLostOrRemoved_UntilItResumes` |
+| R15 | `ANewSourceTrack_FromASourceWhoseEarlierContributionIsLost_MayRejoinTheSameTrack` |
+| R17 | `Merge_KeepsTheOlderNumber_MovesContributions_AndLaterReportsUpdateTheSurvivor`, `Merge_FailsWithAReason_ForAnUnknownTrack` |
+| R18 | `Split_MovesOneContributionToANewTrack_AndReEstimatesBoth`, `Split_FailsWithAReason_WhenItWouldRemoveTheLastContribution`, `Split_FailsWithAReason_ForAnUnknownTrackOrContribution` |
+| R19 (carried over) | `NewTracksBeyondCapacityAreRejected_ButExistingContributionsStillUpdate` |
+| R20 (carried over, reshaped) | `Feed_OffersGaplessOrderedChanges_IncludingContributions_ThatConvergeWithTheSnapshot`, `Feed_RequiresResyncForUnknownEpochFutureRevisionOrTrimmedLog` |
+| R21 (schema 2) | `Checkpoint_PreservesContributionsDescriptorsAndSourceHealth_AndRestoredTracksStillCorrelate`, `Restore_RejectsUnsupportedOrCorruptState` |
+| R33 | `BearingOnlyReport_ThatCorrelatesWithNothing_CreatesABearingTrack`, `BearingTrack_AgesAndIsRemoved_LikeAnyOtherTrack_AndItsNumberIsRetired` |
+| R34 | `BearingReport_ThatCorrelatesWithExactlyOnePointTrack_JoinsItAsAContribution`, `BearingReport_AmbiguousBetweenTwoTracks_StaysStandalone_AndJoinsOnceTheAmbiguityClears`, `BearingTracks_NeverCorrelateWithEachOther` |
+| R35 | `BearingContribution_RefinesThePoint_WhenTheOnlyActiveRangedContributionIsAis`, `BearingContribution_DoesNotRefineThePoint_WhileARadarContributionIsActive`, `BearingContribution_ThatStopsAgreeingForTheConfirmationCount_SplitsOffAsABearingTrack` |
+| R36 | `ABearingTrackWhoseSourceReportsARange_BecomesAPointTrack_KeepingItsNumber`, `ATrackWhoseRangedContributionsAllStop_WhileABearingContributionIsActive_BecomesHybrid`, `AHybridTrack_BecomesPointAgain_WhenARangedReportArrives` |
+
+Compile fixes elsewhere for the reshaped `Track` (data shape only, no behavior
+change): the local `Track(...)` helpers in `TrackMotionTests.cs`,
+`TrackReplicaTests.cs` and `CoreDisplay.Tests/TrackLayerTests.cs`.
+`TrackPipelineIntegrationTests.cs` is adjusted: its AIS+radar scenario is
+trimmed to the still-valid single-source (AIS-only) path and its old-shape
+field access updated; the "a radar target at the same place is a separate
+track" assertion is removed, since that premise is exactly what fusion
+reverses (R3) — its correct replacement is slice 5's real-runtime fusion
+scenario (R27, R28), not this slice.
+
+Failing run (2026-10-27): `dotnet build Core.Application.proj` and `dotnet
+build Poseidon.slnx`: no warnings or errors. `dotnet test Tests/Core/
+CoreTracks.Tests/CoreTracks.Tests.csproj`: 46 failed of 63. The 38 new slice 3
+tests (27 in `TrackManagerTests.cs`, 11 in `TrackBearingTests.cs`) fail with
+`NotImplementedException` from the stub, as expected. The other 8 failures are
+expected collateral from the same stub, not new problems: `TracksModuleTests`'
+two tests and the shared `ModuleDeclarationTests.StopBeforeStart_IsSafeAndIdempotent`
+fail immediately with the same exception (`Submit`/`Capture` on the real
+`TracksModule`); the four `TrackPipelineIntegrationTests` fail instead with a
+15 s timeout, because a submitted observation is normalized and handed to
+`ObservationRelay`'s background consumer thread, where `Submit`'s exception is
+not observed by the awaiting test — the symptom differs (timeout vs.
+exception) but the cause is the same stub. `Contracts.Tests` (105 of 105) and
+`CoreDisplay.Tests` (18 of 18) are unaffected by the reshape.
+
+`dotnet test Poseidon.slnx` (full solution): every project passes except
+`CoreTracks.Tests` (46 of 63, as above) and one more collateral failure found
+this way, `CoreUI.Tests.ShellViewportIntegrationTests.AisInput_ReachesTheShellViewportThroughTracksAndDisplay`
+(1 of 28) — the same real-runtime AIS-to-Tracks-to-Display path as the
+`TrackPipelineIntegrationTests`, timing out for the same reason. The Civilian
+aggregate's own module-suite rerun again surfaces an MSBuild MSB4181 for the
+same reason as slice 2's failing run (its usual way of propagating an inner
+suite failure); Military.Tests was not reached before the run stopped there.
+Every CMS smoke project, `Core.Tests`, `CoreAIS.Tests`, `CoreCharts.Tests`,
+`CoreNavigation.Tests`, `CoreRadar.Tests` and `CoreSonar.Tests` pass.
+
+### Slice 3 (manager): Step 3, code written 2026-10-28
+
+The user ordered the implementation on 2026-10-28.
+
+- `TrackManager` is rewritten in full: per-source registration (`RegisterSource`),
+  correlation (nearest-neighbour position gate plus the optional velocity gate,
+  both 9.21 chi-square two degrees of freedom; the 0.75 dominance score; the
+  200 m absolute join cap; R6's same-source exclusion, which allows a Lost
+  contribution to be rejoined and replaced, R15), per-contribution ageing and
+  removal (R12 to R14), automatic split by comparing each ranged or bearing
+  contribution's own dead-reckoned last report against the first contributor's
+  (R7, R35), operator merge/split (R17, R18, both re-estimating from the
+  surviving contributions' own last reports), bearing gating and refinement
+  (R33 to R36), and checkpoint schema 2. The correlator stayed inline in this
+  file rather than moving to a separate `TrackCorrelator.cs`; nothing observes
+  file layout, and splitting it out later is free to do if it helps.
+- Gating and the dominance score use each candidate's combined (DRMS) position
+  uncertainty as if it were isotropic (independent, equal variance in both
+  axes: variance ≈ DRMS²/2 per axis) rather than its true covariance, and the
+  dominance likelihood considers position only, not velocity. Documented as a
+  starting point, consistent with the plan's own D1/D3.
+- `TrackEstimator` gained three members needed by the manager, all additive
+  (no existing slice 2 test changed behavior): `Peek(atUtc)`, a non-mutating
+  version of `Predict` used to score several candidate tracks against one
+  report without committing to any of them; and `Export()`/`Restore(...)`,
+  a full internal-state snapshot (frame origin, clock, the raw state and
+  covariance, the latest bearing) for the checkpoint. The covariance is
+  flattened to a 16-element array in the snapshot, since `System.Text.Json`
+  does not serialize rectangular (`double[,]`) arrays.
+- Found and corrected test-design bugs while making the tests pass (the
+  tests, not the production code, per development workflow rule 2 — these
+  are wrong assumptions in the tests themselves, not requirement changes):
+  - Two tests disconnected a source and expected its contribution to reach
+    Lost; R14 holds a disconnected contribution at Stale indefinitely, so it
+    never does. Both (`BearingReport_AmbiguousBetweenTwoTracks...` and
+    `ANewSourceTrack_FromASourceWhoseEarlierContributionIsLost...`) now use a
+    short registered descriptor and let the contribution age to Lost while
+    staying connected instead.
+  - `KnownSourceTrack_UpdatesItsContributionAndTheTrack` expected a second
+    report to land exactly on the new position; under fusion it is pulled
+    toward it by the Kalman gain, not replaced outright. Now asserts movement
+    toward the new report, not onto it.
+  - `BearingContribution_DoesNotRefineThePoint_WhileARadarContributionIsActive`
+    compared positions a second apart with exact equality; the fused point
+    still dead-reckons forward with elapsed time regardless of the bearing.
+    The bearing report now shares the same measured instant as the ranged
+    reports, so only the bearing's own (non-)effect is being compared.
+  - `RegisteredSourceTimings_ApplyImmediately...` re-registered a source with
+    a removal time shorter than the time already elapsed, so the track was
+    removed outright instead of landing on Lost as asserted. The new
+    descriptor's removal time is now generous enough to observe Lost first.
+  - `TrackPipelineIntegrationTests` asserted a freshly created track's speed
+    immediately, echoing the raw AIS report; R8 reports speed/course only
+    once the fused velocity has converged, which one report does not reach.
+    The assertion is removed; the position-on-creation assertion (an exact
+    seed, not a fused update) is untouched and still holds.
+  - One production fix found this way, not a test fix: a new source track
+    joining a track to replace its own Lost contribution (R15) was adding the
+    new contribution without removing the Lost one, leaving both. Fixed in
+    `ApplyObservation`.
+
+Passing run (2026-10-28, Windows): `dotnet build Poseidon.slnx` had no
+warnings or errors. `dotnet test Tests/Core/CoreTracks.Tests/CoreTracks.Tests.csproj`:
+63 of 63 passed. `dotnet test Poseidon.slnx`: every project passed with zero
+failures, including `CoreUI.Tests` (28 of 28, including the previously
+timing-out `ShellViewportIntegrationTests.AisInput_ReachesTheShellViewportThroughTracksAndDisplay`)
+and both the Civilian and Military aggregates (no MSB4181 this time). Every
+slice 3 row above now passes.
+
+**Accepted by the user on 2026-10-28**, including the test and production
+fixes above. Slice 3 is done; slice 4 (ingress) has not started.

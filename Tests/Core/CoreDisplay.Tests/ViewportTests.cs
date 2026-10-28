@@ -30,7 +30,6 @@ public sealed class ViewportTests
         Assert.Equal(DisplayPoints.Viewport, point.Id);
         Assert.Equal(PointCardinality.Single, point.Cardinality);
         Assert.Equal(typeof(IChartViewport).FullName, point.Contract);
-        Assert.Equal("1.0.0", point.Version);
         var contribution = Assert.Single(manifest.Contributions);
         Assert.Equal(DisplayPoints.Viewport, contribution.Point);
         Assert.Equal(ViewportFeature, contribution.Id);

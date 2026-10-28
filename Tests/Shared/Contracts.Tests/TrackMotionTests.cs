@@ -12,8 +12,8 @@ public sealed class TrackMotionTests
 
     // The only place a Track is built, so the reshape in slice 3 changes one helper.
     private static Track Track(GeodeticPosition? position, double? speed, double? course) => new(
-        "T1", "Core.Radar", "12", null, TrackState.Active, position, 30, speed, course, null, null,
-        Measured, Measured, Measured, 1, 1, 1);
+        "T1", null, position is null ? TrackKind.Bearing : TrackKind.Point, TrackState.Active, position, 30,
+        speed, course, null, null, Measured, Measured, Measured, 1, 1, []);
 
     [Theory]
     [InlineData(0.0, 1.0, 0.0)]
