@@ -1528,7 +1528,34 @@ warnings or errors. `dotnet test Poseidon.slnx` run three times in a row:
 every project passes with zero failures each time, including both
 aggregates (no MSB4181) and `CoreTracks.Tests` (74/74 each time).
 
+A second push's Arch Linux CI run then failed again, this time
+`Reload_KeepsTrackIdsAndConsumerCursors_...` itself timing out at the new 30s
+deadline. Raising `WaitForTracks`'s margin was treating a symptom: the real
+cause is that several classes in this assembly
+(`TrackPipelineIntegrationTests`, `TracksModuleTests`, `CoreTracksModuleTests`)
+each run a real `TracksModule`/`ModuleRuntime` — a real 1s
+`TimeProvider.System` tick timer plus `TrackIngress`'s and
+`TrackSourceConnector`'s background `Task.Run` pumps and registration loops —
+and xunit's default test-collection parallelism (one collection per class,
+run concurrently) packs many of these onto the thread pool at once. Under a
+constrained CI runner that starves them badly enough to blow even a 30s poll,
+which no amount of further bumping meaningfully fixes.
+
+Fixed instead at the source: `[assembly: CollectionBehavior(DisableTestParallelization = true)]`
+added for `CoreTracks.Tests` (`AssemblyInfo.cs`), so these real-background-task
+test classes run sequentially instead of fighting each other for the thread
+pool. Confirmed with `dotnet test Tests/Core/CoreTracks.Tests` three times in
+a row (74/74 each time, ~3s) and `dotnet test Poseidon.slnx` twice more
+(zero failures, both aggregates, no MSB4181). The 30s `WaitForTracks` margin
+and the `SubmitAisUntilRegistered` registration-race fix both stay as
+defense in depth.
+
+If this same class of flake recurs in another assembly that mixes real
+`ModuleRuntime`/background-task tests with many unit tests (`CoreAIS.Tests`,
+`CoreRadar.Tests`, `CoreUI.Tests` all have real adapters/timers too), the same
+fix applies there.
+
 Not yet done: pushing this fix and confirming it on Windows, Arch Linux and
-RHEL-compatible CI (the PR only ran locally so far in this pass). Slice 6's
-own close-out (full solution run, ledger rows, documentation of tuning
-values and known limits, then PR/CI) has otherwise not started.
+RHEL-compatible CI (only run locally so far in this pass). Slice 6's own
+close-out (full solution run, ledger rows, documentation of tuning values
+and known limits, then PR/CI) has otherwise not started.
