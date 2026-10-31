@@ -1,6 +1,6 @@
 # Resume context
 
-Updated: 2026-10-28 (slice 3 coded)
+Updated: 2026-10-31 (slice 5 committed; its PR's cross-platform CI failures fixed; slice 6 not started)
 
 Read this at the start of every session, then
 [development-workflow.md](development-workflow.md), then
@@ -69,12 +69,32 @@ through tests then code with a gate after each.
 
 | Step | State | Detail |
 |---|---|---|
-| 1. Plan | Done, approved by the user on 2026-10-26 | Includes the bearing amendment (21.12) and the sequencing change (21.5) |
-| 2. Tests | Slices 1 to 3 done and approved | Next: slice 4 (ingress) |
-| 3. Code | Slices 1 to 3 merged/accepted | Remaining: slices 4 to 6; the contracts draft in `features/m1-e-track-fusion-contracts-draft.md` is a starting point for slice 4 |
+| 1. Plan | Done, approved by the user on 2026-10-26 | Includes the bearing amendment (21.12), the sequencing change (21.5) and the multi-sensor-channel amendment (21.13, 2026-10-28) |
+| 2. Tests | Slices 1 to 5 done and approved | Next is slice 6 |
+| 3. Code | Slices 1 to 5 merged/accepted | Remaining: slice 6. The contracts draft in `features/m1-e-track-fusion-contracts-draft.md` is a starting point but predates slices 3 to 5 |
 
-Progress: slice 3 (manager) is done and accepted. Gate: waiting for the order
-to start slice 4 (ingress) Step 2 (tests).
+Progress: slice 5 (consumers and integration) is accepted by the user on
+2026-10-29: `ObservationRelay`/`ITrackIngestion` are removed outright (no
+shim); `CoreAIS`/`CoreRadar` are rewired onto a new `TrackSourceConnector`/
+`ITrackPublisher` (per-channel for Radar), with a real background
+registration/retry loop (`Start`/`StopAsync`); `ChartViewport.BearingLines`
+(R37) does the real Bearing/Hybrid filtering; the real-runtime AIS+radar
+fusion scenario (R27, R28) passes. Full design, the two bugs found and
+fixed, and the triple-repeated passing run are in the feature file's "Slice
+5 (consumers and integration)" Step 2 and Step 3 ledger entries, not
+repeated here. Committed on 2026-10-31 (`ee0e486`).
+
+Its PR then failed cross-platform CI (Windows, Arch Linux, RHEL-compatible):
+a 15s wait margin too tight for a loaded CI runner in one
+`TrackPipelineIntegrationTests` test, and a real registration-race gap (no
+retry at all) after a module reload in another. Both fixed 2026-10-31,
+test-only, same category as slice 4/5's earlier mechanical polling fixes;
+full detail in the feature file's new "Slice 6 (close-out): cross-platform
+CI failures on the slice 5 PR, fixed 2026-10-31" entry. Not yet pushed or
+confirmed on actual CI. Gate: waiting for the order to push this fix and/or
+start slice 6 proper (close-out; see 21.5: full solution run, ledger rows,
+documentation of tuning values and known limits, then PR and cross-platform
+CI).
 
 A second feature is now also in flight, by the user's explicit choice to
 interleave them: [sensor simulators and ComputerGeneratedForce](features/sensor-simulators.md)
@@ -93,11 +113,49 @@ for either feature (M1-E slice 3, or sensor-simulators, or both).
 
 ## Last changes made
 
-Feature and step: M1-E fusion rework, slice 3 accepted (Step 3 code already
-done), on branch `feature/core-track-system`.
+Feature and step: M1-E fusion rework, slice 5 (consumers and integration)
+accepted 2026-10-29, on branch `feature/core-track-system`. Slice 6 has not
+started.
 
-- The user accepted slice 3, including the test and production fixes, on
-  2026-10-28.
+- The user accepted slice 5 on 2026-10-29 (tests approved the same day,
+  Step 3 code written and accepted the same day). Implemented
+  `TrackSourceConnector.Start`/`StopAsync` for real: a
+  background task (execution-context flow suppressed) retries
+  `ITrackPublisher.Register` every 200 ms until it succeeds, then holds the
+  sink; `StopAsync` cancels it and disposes the sink. A descriptor update
+  that lands in the registration race window is reconciled once the sink
+  is set, so a rotation-rate change is never silently lost. Implemented
+  `ChartViewport.BearingLines` for real: one line per Bearing-/Hybrid-kind
+  track, styled by that track's own state.
+- Found and fixed two bugs while making the tests pass: (1) `AisModule`/
+  `RadarModule.Submit` incremented their sequence counter before checking
+  the connector had actually registered, so a report rejected as
+  `Unavailable` in the registration window still permanently burned a
+  sequence number — fixed by checking `Sink is null` first; (2) three
+  adapter tests asserted on the very first `Submit`/descriptor read
+  immediately after `StartAsync`, assuming registration had already
+  completed, which is a race now that it is a real background task — fixed
+  by polling past it (mechanical, same category as slice 4's `DrainOnce`
+  fixes), not by changing what they check.
+- `dotnet build Poseidon.slnx`: no warnings or errors. `dotnet test
+  Poseidon.slnx` run three times in a row: every project passes with zero
+  failures each time, including both aggregates (no MSB4181 recurrence) and
+  `CoreUI.Tests`' `ShellViewportIntegrationTests`. Full detail in the
+  feature file's "Slice 5 (consumers and integration)" Step 3 ledger entry.
+  Nothing is committed.
+
+Earlier in the same session: slice 5 Step 2 (tests) was written against the
+two stubs above and failed there, uncaught (16 tests); full detail is in
+the feature file's own Step 2 ledger entry, not repeated here.
+
+Earlier in the same session: slice 4 (ingress) accepted on 2026-10-28, on
+the explicit terms in its ledger entry's "not done in this pass" list,
+which slice 5 above now picks up as its first step; full detail is in the
+feature file's "Slice 4 (ingress)" Step 2 and Step 3 ledger entries, not
+repeated here.
+
+Earlier in the same session: slice 3 (manager) accepted on 2026-10-28.
+
 - Implemented `TrackManager` (correlation, contributions, per-contribution
   lifecycle, automatic split, operator merge/split, bearing association and
   kind changes, checkpoint schema 2) and added `Peek`/`Export`/`Restore` to
@@ -158,16 +216,14 @@ Earlier (before this session; slice 1, now merged):
 
 ## What needs to be done next
 
-1. **Slice 4 (ingress) Step 2 (tests)**, on the user's order: the publisher,
-   per-source queues and consumer thread, the operations feature exposed
-   through the module, manifests, adapters as publishers, radar rotation
-   rate, statistics, the throughput baseline (R22 to R26, R29 to R31, 21.5
-   item 4). The contracts draft in
-   `features/m1-e-track-fusion-contracts-draft.md` is a starting point.
+1. **Slice 6 (close-out)**, on the user's order (see 21.5): full solution
+   run, ledger rows, documentation of tuning values and known limits, then
+   PR and cross-platform CI. M1-E as built is not accepted until this is
+   done and CI passes on Windows, Arch Linux and RHEL-compatible containers.
 2. **Sensor-simulators Step 2 (tests)**, on the user's order, may proceed
    alongside the above (plan approved 2026-10-27); its Step 3 (code) still
-   waits until M1-E (slices 3 to 6) is done.
-3. Slices 5 and 6 of M1-E (consumers, close-out) have not started; see 21.5.
+   waits until M1-E (slices 5 to 6) is done.
+3. Slice 6 of M1-E (close-out) has not started; see 21.5.
 4. Tuning (later, when real data is available): the 200 m join and split
    distance, the declared peak report rates and the other starting values in
    section 21.4.

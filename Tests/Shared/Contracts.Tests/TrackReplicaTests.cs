@@ -36,6 +36,10 @@ public sealed class TrackReplicaTests
         => new(id, null, TrackKind.Point, TrackState.Active, new GeodeticPosition(latitude, 20), null, null, null,
             null, null, Time, Time, Time, 1, revision, []);
 
+    private static Track BearingTrack(string id, long revision)
+        => new(id, null, TrackKind.Bearing, TrackState.Active, null, null, null, null, null,
+            new TrackBearing(45, 5, new GeodeticPosition(10, 20), Time), Time, Time, Time, 1, revision, []);
+
     private static TrackSnapshot Snapshot(string epoch, long revision, params Track[] tracks)
         => new(epoch, revision, tracks, []);
 
@@ -64,6 +68,27 @@ public sealed class TrackReplicaTests
         Assert.Equal(new[] { "T1", "T2" }, replica.Tracks.Select(t => t.Id));
         Assert.Single(notifications);
         Assert.Equal(1, feed.SnapshotCalls);
+    }
+
+    [Fact]
+    public async Task ABearingTrack_WithNoPositionAndANonNullBearing_FlowsThroughSnapshotAndChanges()
+    {
+        // Coverage for slice 5 (R33, R37): TrackReplica itself is unchanged (21.6), so this exercises
+        // already-real behavior and is expected to pass, confirming a Bearing-kind track (null Position,
+        // non-null Bearing) survives both a snapshot and an incremental change unmodified.
+        var (replica, host, feed, _) = Create();
+        feed.OnSnapshot = () => Snapshot("e1", 1, BearingTrack("T1", 1));
+        await replica.PollAsync(host, CancellationToken.None);
+        var snapshotted = Assert.Single(replica.Tracks);
+        Assert.Null(snapshotted.Position);
+        Assert.Equal(new TrackBearing(45, 5, new GeodeticPosition(10, 20), Time), snapshotted.Bearing);
+
+        feed.OnChanges = (_, _, _) => new TrackChanges("e1", 2, [Upsert(BearingTrack("T1", 2))], false);
+        await replica.PollAsync(host, CancellationToken.None);
+        var updated = Assert.Single(replica.Tracks);
+        Assert.Equal(TrackKind.Bearing, updated.Kind);
+        Assert.Null(updated.Position);
+        Assert.Equal(45, updated.Bearing!.TrueBearingDegrees);
     }
 
     [Fact]
@@ -222,9 +247,9 @@ public sealed class TrackReplicaTests
 
         pump.Start();
         pump.Start();
-        await host.Ingestion.WaitUntilAsync(() => replica.Revision == 1, "the first snapshot");
+        await host.Publisher.WaitUntilAsync(() => replica.Revision == 1, "the first snapshot");
         revision = 2;
-        await host.Ingestion.WaitUntilAsync(() => replica.Revision == 2, "the update");
+        await host.Publisher.WaitUntilAsync(() => replica.Revision == 2, "the update");
 
         host.Block = new TaskCompletionSource().Task;
         await Task.Delay(50);
@@ -234,7 +259,7 @@ public sealed class TrackReplicaTests
         host.Block = null;
         replica.Reset();
         pump.Start();
-        await host.Ingestion.WaitUntilAsync(() => replica.State == TrackReplicaState.Live, "restart");
+        await host.Publisher.WaitUntilAsync(() => replica.State == TrackReplicaState.Live, "restart");
         await pump.StopAsync();
     }
 
@@ -248,7 +273,7 @@ public sealed class TrackReplicaTests
         try { pump.Start(); }
         finally { FakeTrackHost.InvocationBlocked.Value = false; }
 
-        await host.Ingestion.WaitUntilAsync(() => replica.State == TrackReplicaState.Live, "the snapshot");
+        await host.Publisher.WaitUntilAsync(() => replica.State == TrackReplicaState.Live, "the snapshot");
         await pump.StopAsync();
     }
 }

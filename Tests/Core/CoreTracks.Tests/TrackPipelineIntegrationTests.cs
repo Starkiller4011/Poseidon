@@ -21,7 +21,9 @@ public sealed class TrackPipelineIntegrationTests
 
     private static async Task<TrackSnapshot> WaitForTracks(ModuleRuntime runtime, Func<TrackSnapshot, bool> condition)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(15);
+        // 30s, not the margin this ever needs: a contended CI runner can starve the ingress pump's background
+        // task well past what a quiet machine would, and this is purely how long the test waits, not what it checks.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
         while (true)
         {
             var snapshot = await Snapshot(runtime);
@@ -32,17 +34,44 @@ public sealed class TrackPipelineIntegrationTests
         }
     }
 
+    // A module reload recreates each dependent source's TrackSourceConnector (e.g. AisModule.StartAsync), whose
+    // registration runs on a background task (21.3, R23) and can race a Submit made right after ReloadAsync
+    // returns. Polls past that window without changing what a test asserts, the same way SubmissionPolling
+    // already does for the adapter unit tests (Tests/Shared/FakeTrackHost.cs).
+    private static async Task<SubmissionResult> SubmitAisUntilRegistered(ModuleRuntime runtime, AisPositionReport report)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            var result = await SubmitAis(runtime, report);
+            if (result.Reason != RejectionReason.Unavailable || DateTime.UtcNow >= deadline)
+                return result;
+            await Task.Delay(10);
+        }
+    }
+
+    private static RadarTargetReport Radar(int target = 7, int seconds = 0)
+        => new(target, Measured.AddSeconds(seconds), 50, 10, BearingReference.True,
+            new SensorPose(new GeodeticPosition(25.25, 55.5), 0));
+
+    private static Task<SubmissionResult> SubmitRadar(ModuleRuntime runtime, RadarTargetReport report)
+        => runtime.InvokeAsync<IRadarInput, SubmissionResult>(SensorPoints.RadarInputFeatureId, i => i.Submit(report));
+
     [Fact]
     public async Task AisInput_BecomesAManagedTrack_AndRepeatReportsUpdateTheSameTrack()
     {
-        // The AIS+radar real-runtime fusion scenario (one vessel, two sources, one track) is slice 5's
-        // real-runtime fusion scenario (R27, R28); this keeps the single-source path working in the meantime.
         await using var modules = new DeployedModules();
         modules.Deploy("CoreTracks", "CoreAIS", "CoreRadar", "CoreSonar");
         Assert.True(await modules.Runtime.ReloadAsync());
         Assert.All(modules.Runtime.Status.Packages, p => Assert.Equal(PackageState.Active, p.State));
+        // tracks.ingestion/ITrackIngestion are removed entirely this slice (21.2, 21.6); only the three
+        // publisher-era points remain.
         Assert.Equal(
-            new[] { SensorPoints.AisInput, SensorPoints.RadarInput, TrackPoints.Feed, TrackPoints.Ingestion },
+            new[]
+            {
+                SensorPoints.AisInput, SensorPoints.RadarInput, TrackPoints.Feed,
+                TrackPoints.Operations, TrackPoints.Publisher
+            },
             modules.Runtime.Status.Features.Select(f => f.PointId!).Order(StringComparer.Ordinal));
 
         Assert.True((await SubmitAis(modules.Runtime, Ais())).Accepted);
@@ -57,6 +86,49 @@ public sealed class TrackPipelineIntegrationTests
         Assert.True((await SubmitAis(modules.Runtime, Ais(seconds: 10))).Accepted);
         var updated = await WaitForTracks(modules.Runtime, s => s.Tracks.Any(t => t.UpdateCount == 2));
         Assert.Equal(ais.Id, Assert.Single(updated.Tracks).Id);
+    }
+
+    [Fact]
+    public async Task AisAndRadar_OfOneVessel_FuseIntoOneTrack_WhichSurvivesReload_AndOutlivesEitherSource()
+    {
+        // The real-runtime fusion scenario (R27, R28): one vessel, two real sensor modules registering through
+        // the publisher, one fused track whose number survives a reload and whose life does not depend on
+        // either single source.
+        await using var modules = new DeployedModules();
+        modules.Deploy("CoreTracks", "CoreAIS", "CoreRadar");
+        Assert.True(await modules.Runtime.ReloadAsync());
+        Assert.All(modules.Runtime.Status.Packages, p => Assert.Equal(PackageState.Active, p.State));
+
+        Assert.True((await SubmitAis(modules.Runtime, Ais())).Accepted);
+        var afterAis = await WaitForTracks(modules.Runtime, s => s.Tracks.Count == 1);
+        var trackId = Assert.Single(afterAis.Tracks).Id;
+
+        Assert.True((await SubmitRadar(modules.Runtime, Radar())).Accepted);
+        var fused = await WaitForTracks(modules.Runtime, s => s.Tracks.Any(t => t.Contributions.Count == 2));
+        var track = Assert.Single(fused.Tracks);
+        Assert.Equal(trackId, track.Id);
+        Assert.Equal(
+            new[] { "Core.AIS", "Core.Radar" },
+            track.Contributions.Select(c => c.SourceId).OrderBy(id => id, StringComparer.Ordinal));
+
+        var generation = modules.Runtime.Status.Generation;
+        modules.Touch("CoreTracks");
+        Assert.True(await modules.Runtime.ReloadAsync());
+        Assert.True(modules.Runtime.Status.Generation > generation);
+        var afterReload = await WaitForTracks(modules.Runtime, s => s.Tracks.Count == 1);
+        Assert.Equal(trackId, Assert.Single(afterReload.Tracks).Id);
+
+        await modules.Runtime.InvokeAsync<IAisInput, bool>(SensorPoints.AisInputFeatureId, i =>
+        {
+            i.ReportSourceHealth(SourceHealth.Disconnected, "no signal");
+            return true;
+        });
+        var aisDown = await WaitForTracks(modules.Runtime, s => s.Tracks.Any(t => t.Id == trackId));
+        Assert.Equal(TrackState.Active, Assert.Single(aisDown.Tracks).State);
+
+        Assert.True((await SubmitRadar(modules.Runtime, Radar(seconds: 10))).Accepted);
+        var stillAlive = await WaitForTracks(modules.Runtime, s => s.Tracks.Any(t => t.UpdateCount == 3));
+        Assert.Equal(trackId, Assert.Single(stillAlive.Tracks).Id);
     }
 
     [Fact]
@@ -101,7 +173,7 @@ public sealed class TrackPipelineIntegrationTests
         Assert.False(changes.ResyncRequired);
         Assert.Empty(changes.Changes);
 
-        Assert.True((await SubmitAis(modules.Runtime, Ais(seconds: 10))).Accepted);
+        Assert.True((await SubmitAisUntilRegistered(modules.Runtime, Ais(seconds: 10))).Accepted);
         var after = await WaitForTracks(modules.Runtime, s => s.Tracks.Any(t => t.UpdateCount == 2));
         var track = Assert.Single(after.Tracks);
         Assert.Equal((before.Tracks[0].Id, before.Epoch), (track.Id, after.Epoch));

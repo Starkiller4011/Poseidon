@@ -600,7 +600,11 @@ public sealed class TrackManagerTests
         var after = restored.GetSnapshot();
         Assert.Equal((before.Epoch, before.Revision), (after.Epoch, after.Revision));
         Assert.Equal(before.Tracks, after.Tracks);
-        Assert.Equal(before.Sources, after.Sources);
+        // Slice 4 (21.9, R30): per-source statistics are runtime observability, not track state, and are not
+        // checkpointed; everything else about a source survives restore unchanged.
+        Assert.Equal(
+            before.Sources.Select(s => s with { Statistics = null }), after.Sources.Select(s => s with { Statistics = null }));
+        Assert.All(after.Sources, s => Assert.Null(s.Statistics));
 
         // A later report for the same (source, target) pair updates the restored track, proving the
         // correlation index survived, not just the public snapshot.

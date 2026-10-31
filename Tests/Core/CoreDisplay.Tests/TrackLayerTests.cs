@@ -19,6 +19,13 @@ public sealed class TrackLayerTests
             TrackState.Active, positioned ? new GeodeticPosition(25, 55) : null, null, null, null,
             null, null, Time, Time, Time, 1, 1, []);
 
+    private static Track TrackWithBearing(string id, TrackKind kind, TrackState state = TrackState.Active)
+    {
+        var bearing = new TrackBearing(45, 5, new GeodeticPosition(25, 55), Time);
+        var position = kind == TrackKind.Bearing ? null : new GeodeticPosition(25, 55);
+        return new(id, null, kind, state, position, null, null, null, null, bearing, Time, Time, Time, 1, 1, []);
+    }
+
     private static IChartViewport ViewportOf(IModule module) => (IChartViewport)module.Features[ViewportFeature];
 
     private static string? StatusText(Control view)
@@ -46,6 +53,32 @@ public sealed class TrackLayerTests
         viewport.SetLayerVisibility("display.tracks", false);
         Assert.False(viewport.Layers[1].IsVisible);
         Assert.Throws<InvalidOperationException>(() => viewport.SetLayerVisibility("display.base", false));
+    }
+
+    [Fact]
+    public async Task BearingLines_IncludeBearingAndHybridTracksOnly_StyledByEachTracksOwnState()
+    {
+        // R37: Bearing and Hybrid tracks each produce one line, styled by that track's own state; a Point
+        // track never does, even one whose Bearing happens to be populated (a not-yet-refining contribution,
+        // per the Track.Bearing/TrackContribution comments in Tracks.cs). Fails at the BearingLines stub
+        // (NotImplementedException) until slice 5 Step 3 implements the real filtering.
+        var feed = new StaticTrackFeed();
+        feed.Set(
+            TrackWithBearing("T1", TrackKind.Bearing, TrackState.Active),
+            TrackWithBearing("T2", TrackKind.Hybrid, TrackState.Stale),
+            TrackWithBearing("T3", TrackKind.Point));
+        var host = new FakeTrackHost { Feed = feed };
+        var module = new DisplayModule(TimeSpan.FromMilliseconds(20));
+        var viewport = ViewportOf(module);
+        await module.StartAsync(host, null, CancellationToken.None);
+        await Task.Delay(100);
+
+        var lines = viewport.BearingLines;
+        Assert.Equal(
+            new[] { ("T1", TrackState.Active), ("T2", TrackState.Stale) },
+            lines.Select(l => (l.TrackId, l.State)).OrderBy(l => l.Item1, StringComparer.Ordinal));
+        Assert.All(lines, l => Assert.Equal((new GeodeticPosition(25, 55), 45.0), (l.Origin, l.TrueBearingDegrees)));
+        await module.StopAsync(CancellationToken.None);
     }
 
     [AvaloniaFact]

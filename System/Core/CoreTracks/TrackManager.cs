@@ -38,6 +38,23 @@ internal sealed class SourceRegistration(SourceStatus status, DateTimeOffset res
     public TrackSourceDescriptor? Descriptor { get; set; }
 }
 
+// R30's per-source counters. Received/Created/Updated/Invalid/Duplicate/OutOfOrder/CapacityExceeded and
+// LastRejection come from applying reports (SubmitLocked); QueueDepth and Dropped are pushed in from the
+// source's own queue in TrackIngress (RecordQueueMetrics), which the manager otherwise knows nothing about.
+internal sealed class SourceStatisticsAccumulator
+{
+    public long Received;
+    public long Created;
+    public long Updated;
+    public long Invalid;
+    public long Duplicate;
+    public long OutOfOrder;
+    public long CapacityExceeded;
+    public long Dropped;
+    public int QueueDepth;
+    public string? LastRejection;
+}
+
 // One source's contribution to a track. LastReported* holds the contribution's own raw, unfused report (never
 // what the shared estimator was pulled toward), used to detect disagreement for the automatic split (R7, R35)
 // and to re-estimate a track from only its remaining contributions after a split or merge.
@@ -91,7 +108,7 @@ internal sealed class TrackEntry
 // position uncertainty treated as isotropic (independent, equal in both axes) rather than its true covariance,
 // and the dominance likelihood considers position only, not velocity. The correlator lives in this file rather
 // than a separate TrackCorrelator.cs; nothing observes file layout.
-internal sealed class TrackManager : ITrackIngestion, ITrackFeed, ITrackOperations
+internal sealed class TrackManager : ITrackFeed, ITrackOperations
 {
     private const int CheckpointSchema = 2;
     private const double DefaultBearingUncertaintyDegrees = 5;
@@ -106,6 +123,11 @@ internal sealed class TrackManager : ITrackIngestion, ITrackFeed, ITrackOperatio
     private readonly Dictionary<string, TrackEntry> tracks = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Source, string Target), string> index = [];
     private readonly Dictionary<string, SourceRegistration> sources = new(StringComparer.Ordinal);
+    // Per-source counters for R30 and the system health for R26 (21.9); fed partly by SubmitLocked itself and
+    // partly by TrackIngress's queue (RecordQueueMetrics). Not checkpointed: they are runtime observability,
+    // not track state.
+    private readonly Dictionary<string, SourceStatisticsAccumulator> statistics = new(StringComparer.Ordinal);
+    private DateTimeOffset? lastDropUtc;
     private readonly List<TrackChange> log = [];
     private int logHead;
     private string epoch = Guid.NewGuid().ToString("N");
@@ -155,6 +177,54 @@ internal sealed class TrackManager : ITrackIngestion, ITrackFeed, ITrackOperatio
     }
 
     private ObservationResult SubmitLocked(TrackObservation observation, DateTimeOffset now)
+    {
+        var result = SubmitLockedCore(observation, now);
+        RecordStatistic(observation.SourceId, result);
+        return result;
+    }
+
+    private void RecordStatistic(string sourceId, ObservationResult result)
+    {
+        var accumulator = statistics.TryGetValue(sourceId, out var existing) ? existing : statistics[sourceId] = new();
+        accumulator.Received++;
+        switch (result.Outcome)
+        {
+            case ObservationOutcome.Created:
+                accumulator.Created++;
+                break;
+            case ObservationOutcome.Updated:
+                accumulator.Updated++;
+                break;
+            case ObservationOutcome.Rejected:
+                switch (result.Reason)
+                {
+                    case RejectionReason.Duplicate: accumulator.Duplicate++; break;
+                    case RejectionReason.OutOfOrder: accumulator.OutOfOrder++; break;
+                    case RejectionReason.CapacityExceeded: accumulator.CapacityExceeded++; break;
+                    default: accumulator.Invalid++; break;
+                }
+                accumulator.LastRejection = result.Detail ?? result.Reason.ToString();
+                break;
+        }
+    }
+
+    // Pushed in from TrackIngress's own per-source queue (21.9): the manager has no other way to know a
+    // queue's current depth or that it dropped a report. droppedDelta > 0 also marks the system-wide drop
+    // time GetSnapshot uses for R26's Degraded/Healthy health.
+    internal void RecordQueueMetrics(string sourceId, int queueDepth, long droppedDelta)
+    {
+        lock (gate)
+        {
+            var accumulator = statistics.TryGetValue(sourceId, out var existing) ? existing : statistics[sourceId] = new();
+            accumulator.QueueDepth = queueDepth;
+            if (droppedDelta <= 0)
+                return;
+            accumulator.Dropped += droppedDelta;
+            lastDropUtc = time.GetUtcNow();
+        }
+    }
+
+    private ObservationResult SubmitLockedCore(TrackObservation observation, DateTimeOffset now)
     {
         if (string.IsNullOrWhiteSpace(observation.SourceTargetId))
             return ObservationResult.Rejected(RejectionReason.MissingTargetId,
@@ -870,10 +940,31 @@ internal sealed class TrackManager : ITrackIngestion, ITrackFeed, ITrackOperatio
     public TrackSnapshot GetSnapshot()
     {
         lock (gate)
+        {
+            var now = time.GetUtcNow();
             return new TrackSnapshot(epoch, revision,
                 [.. tracks.Values.OrderBy(e => e.Id, StringComparer.Ordinal).Select(BuildPublicTrack)],
-                [.. sources.Values.Select(s => s.Status).OrderBy(s => s.SourceId, StringComparer.Ordinal)]);
+                [.. sources.Values.Select(s => s.Status with { Statistics = StatisticsFor(s.Status.SourceId) })
+                    .OrderBy(s => s.SourceId, StringComparer.Ordinal)],
+                System: new TrackSystemStatus(SystemHealth(now), SystemDetail(now), now));
+        }
     }
+
+    private SourceStatistics? StatisticsFor(string sourceId)
+        => statistics.TryGetValue(sourceId, out var a)
+            ? new SourceStatistics(a.Received, a.Created, a.Updated, a.Invalid, a.Duplicate, a.OutOfOrder,
+                a.CapacityExceeded, a.Dropped, a.QueueDepth, a.LastRejection)
+            : null;
+
+    // R26: the system is Degraded while any source's queue has dropped a report in the last 10 seconds.
+    private TrackSystemHealth SystemHealth(DateTimeOffset now)
+        => lastDropUtc is { } dropped && now - dropped < TimeSpan.FromSeconds(10)
+            ? TrackSystemHealth.Degraded : TrackSystemHealth.Healthy;
+
+    private string? SystemDetail(DateTimeOffset now)
+        => SystemHealth(now) == TrackSystemHealth.Degraded
+            ? "One or more source queues are dropping reports; Tracks cannot keep up with the current load."
+            : null;
 
     public TrackChanges GetChanges(string? epoch, long afterRevision, int maxChanges = 1000)
     {

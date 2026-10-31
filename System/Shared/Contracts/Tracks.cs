@@ -4,10 +4,12 @@ namespace Poseidon.Core.Modules;
 // contribution in RuntimeStatus without referencing Tracks.
 public static class TrackPoints
 {
-    public const string Ingestion = "tracks.ingestion";
     public const string Feed = "tracks.feed";
-    public const string IngestionFeatureId = "core.tracks.ingestion";
+    public const string Publisher = "tracks.publisher";
+    public const string Operations = "tracks.operations";
     public const string FeedFeatureId = "core.tracks.feed";
+    public const string PublisherFeatureId = "core.tracks.publisher";
+    public const string OperationsFeatureId = "core.tracks.operations";
 }
 
 // WGS 84 geodetic position in decimal degrees.
@@ -139,12 +141,21 @@ public sealed record ObservationResult(
         => new(ObservationOutcome.Rejected, null, reason, detail);
 }
 
-// Only Tracks creates managed tracks; sensors submit observations and never call Display directly.
-public interface ITrackIngestion
+// A source's handle for publishing into the bounded queue Tracks keeps for it (21.9). Publishing never waits
+// for the track manager: the consumer thread drains the queue separately. Dispose when the source stops.
+public interface ITrackSink : IDisposable
 {
-    ObservationResult Submit(TrackObservation observation);
-    IReadOnlyList<ObservationResult> SubmitBatch(IReadOnlyList<TrackObservation> observations);
-    void ReportSourceHealth(string sourceId, SourceHealth health, string? detail = null);
+    SubmissionResult Publish(TrackObservation observation);
+    void ReportHealth(SourceHealth health, string? detail = null);
+    void UpdateDescriptor(TrackSourceDescriptor descriptor);
+}
+
+// Sources register once Tracks is available and receive a sink. Registering a source ID again (for example
+// after a restart, or a module's own reconnect) replaces the earlier sink; an invalid descriptor throws
+// ArgumentException, and an ID claimed by another registration that is still live also throws ArgumentException.
+public interface ITrackPublisher
+{
+    ITrackSink Register(TrackSourceDescriptor descriptor);
 }
 
 public enum TrackState
@@ -235,20 +246,48 @@ public interface ITrackOperations
     TrackOperationResult Split(string trackId, string sourceId, string sourceTargetId);
 }
 
-public sealed record SourceStatus(string SourceId, SourceHealth Health, string? Detail, DateTimeOffset UpdatedUtc);
+// Counters kept by Tracks for one source since Tracks started (R30; not checkpointed). QueueDepth and Dropped
+// come from that source's own queue in Tracks (21.9); the rest come from applying its reports to the manager.
+public sealed record SourceStatistics(
+    long Received,
+    long Created,
+    long Updated,
+    long Invalid,
+    long Duplicate,
+    long OutOfOrder,
+    long CapacityExceeded,
+    long Dropped,
+    int QueueDepth,
+    string? LastRejection);
+
+public sealed record SourceStatus(
+    string SourceId, SourceHealth Health, string? Detail, DateTimeOffset UpdatedUtc, SourceStatistics? Statistics = null);
+
+// The track management system's own health (R26), separate from any one sensor's health: Degraded means some
+// source's queue is dropping reports because Tracks cannot keep up, not that a sensor has failed.
+public enum TrackSystemHealth
+{
+    Healthy,
+    Degraded
+}
+
+public sealed record TrackSystemStatus(TrackSystemHealth Health, string? Detail, DateTimeOffset UpdatedUtc);
 
 public sealed record TrackSnapshot(
-    string Epoch, long Revision, IReadOnlyList<Track> Tracks, IReadOnlyList<SourceStatus> Sources);
+    string Epoch, long Revision, IReadOnlyList<Track> Tracks, IReadOnlyList<SourceStatus> Sources,
+    TrackSystemStatus? System = null);
 
 public enum TrackChangeKind
 {
     Upsert,
     Remove,
-    Source
+    Source,
+    System
 }
 
 public sealed record TrackChange(
-    long Revision, TrackChangeKind Kind, Track? Track = null, string? TrackId = null, SourceStatus? Source = null);
+    long Revision, TrackChangeKind Kind, Track? Track = null, string? TrackId = null, SourceStatus? Source = null,
+    TrackSystemStatus? System = null);
 
 // Changes strictly after the requested revision, in order and without gaps. Revision is the revision of the
 // last returned change (or the unchanged cursor). When ResyncRequired is set the cursor is unusable and the

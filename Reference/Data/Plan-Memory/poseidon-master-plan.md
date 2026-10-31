@@ -12,8 +12,9 @@ gate. M1-B (CoreUI/Display viewport boundary) is merged and passed
 cross-platform CI. M1-E (track pipeline) is implemented and verified on Windows
 as single-source tracks; its acceptance is on hold because the fusion
 requirements confirmed on 2026-10-26 replace parts of it. That rework's slices
-1 to 3 are accepted; slice 4 (ingress) has not started. This is not a
-certification claim.
+1 to 4 are accepted (slice 4 on 2026-10-28, with the adapter rewire it
+deferred carried into slice 5); slices 5 and 6 have not started. This is not
+a certification claim.
 
 ## How this documentation is organized
 
@@ -35,7 +36,7 @@ All files are in `Reference/Data/Plan-Memory/`.
 | [m1-b-ui-and-viewport.md](features/m1-b-ui-and-viewport.md) | M1-B | Done; merged after cross-platform CI |
 | [m1-c-chart-data-pipeline.md](features/m1-c-chart-data-pipeline.md) | M1-C | Not started; no plan approved |
 | [m1-e-track-pipeline.md](features/m1-e-track-pipeline.md) | M1-E (as built) | Implemented and verified on Windows; acceptance on hold pending the rework |
-| [m1-e-track-fusion.md](features/m1-e-track-fusion.md) | M1-E (rework) | Plan approved 2026-10-26 (bearing tracks in Core added); slices 1 to 3 accepted; slice 4 (ingress) not started |
+| [m1-e-track-fusion.md](features/m1-e-track-fusion.md) | M1-E (rework) | Plan approved 2026-10-26 (bearing tracks in Core added) and amended 2026-10-28 (multi-sensor-channel modules, 21.13); slices 1 to 4 accepted (slice 4 on 2026-10-28); the adapter rewire it deferred carries into slice 5; slices 5 to 6 not started |
 | [cms-backlog.md](features/cms-backlog.md) | CMS | Documentation only; deferred until the civilian side is complete |
 | [sensor-simulators.md](features/sensor-simulators.md) | Supporting infrastructure | Plan approved 2026-10-27; tests may proceed alongside M1-E, code waits until M1-E is done |
 
@@ -261,7 +262,7 @@ working on M1. Each work package is a feature (or several) developed under
 | M1-B: UI and viewport | M1-A | CoreUI owns normal UI; Display contributes empty viewport and layer API; UI/Display reload without restarting Core; diagnostics/recovery remain available | Done |
 | M1-C: Chart-data pipeline | M1-A | Audit specifications/resources, pin fixture versions; Charts decodes a real base cell; verify metadata, attributes, topology and malformed-input diagnostics | Not started |
 | M1-D: Integrated chart view | M1-B, M1-C | Display draws Charts data; pan/zoom, locked base, overlays, contour slider and feature inspection; demonstrate Charts/Display provider replacement | Not started |
-| M1-E: Track pipeline | M1-A; UI integration needs M1-B | Tracks contracts/manager plus AIS/Radar adapter boundaries (Sonar is not a track source); recorded/simulated observations produce managed tracks and Display updates; lifecycle, resync and reload tests; fusion, per-source timings and queue ingress (rework) | Single-source version built; fusion rework planned |
+| M1-E: Track pipeline | M1-A; UI integration needs M1-B | Tracks contracts/manager plus AIS/Radar adapter boundaries (Sonar is not a track source); recorded/simulated observations produce managed tracks and Display updates; lifecycle, resync and reload tests; fusion, per-source timings and queue ingress (rework) | Fusion rework in progress: slices 1 to 4 of 6 accepted |
 | M1-F: Navigation functions | M1-E | Own-ship state and tested CPA/TCPA; Display annotations; unavailable/stale/degenerate-motion behavior is explicit; a fault when own-ship position or heading is unavailable | Not started |
 | M1-G: Integration gate | M1-D, M1-E, M1-F | Windows/Arch Linux/RHEL publish and native desktop smoke tests (RHEL with SELinux enforcing); actual civilian module suites; dependency, override and hot-reload failure tests across the integrated application | Not started |
 
@@ -274,7 +275,11 @@ Follow-on core work includes full chart installation/update management,
 expanded portrayal and real sensor protocols. Preserve the update-validation
 requirements in the M1-C file; agree their release scope after the first
 integrated slice. CMS roles, multi-console coordination and specialized modules
-remain long-term backlog and do not block core development.
+remain long-term backlog and do not block core development. A deployed
+authoring tool for editing every sensor module's per-module hardware
+configuration file from one place is also noted as backlog (not scoped;
+[M1-E rework, 21.13](features/m1-e-track-fusion.md)); it would write to the
+same per-module files the modules read at startup, not add a runtime path.
 
 ## Verification strategy (general)
 

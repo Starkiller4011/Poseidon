@@ -112,19 +112,21 @@ public sealed class AisModuleTests
     [Fact]
     public async Task RunningAdapter_NormalizesAndForwardsReportsAndHealthToTracks()
     {
+        // Registration now happens on a background task (21.3, R23), so the first Submit after StartAsync
+        // can race it; poll past that window rather than assume it has already completed.
         var host = new FakeTrackHost();
         var module = new AisModule();
         await module.StartAsync(host, null, CancellationToken.None);
 
-        Assert.True(module.Submit(Report()).Accepted);
+        Assert.True((await SubmissionPolling.UntilRegisteredAsync(() => module.Submit(Report()))).Accepted);
         Assert.True(module.Submit(Report(seconds: 5)).Accepted);
         module.ReportSourceHealth(SourceHealth.Disconnected, "no signal");
         var invalid = module.Submit(Report(mmsi: 0));
         Assert.Equal((false, RejectionReason.Invalid), (invalid.Accepted, invalid.Reason));
 
-        await host.Ingestion.WaitUntilAsync(() => host.Ingestion.Calls.Count == 3, "delivery");
-        Assert.Equal(new[] { "obs:1", "obs:2", "health:Core.AIS:Disconnected" }, host.Ingestion.Calls);
-        var first = host.Ingestion.Observations[0];
+        await host.Publisher.WaitUntilAsync(() => host.Publisher.Calls.Count == 3, "delivery");
+        Assert.Equal(new[] { "obs:1", "obs:2", "health:Core.AIS:Disconnected" }, host.Publisher.Calls);
+        var first = host.Publisher.Observations[0];
         Assert.Equal(("Core.AIS", "366123456"), (first.SourceId, first.SourceTargetId));
         Assert.Equal(10 * 1852.0 / 3600, first.SpeedOverGroundMetresPerSecond!.Value, 9);
         await module.StopAsync(CancellationToken.None);
@@ -143,10 +145,11 @@ public sealed class AisModuleTests
     [Fact]
     public async Task Sequence_IsCheckpointedAcrossRestarts_AndUnsupportedStateIsRejected()
     {
+        // AisModule owns its own sequence counter and checkpoint now (ObservationRelay owned this before).
         var host = new FakeTrackHost();
         var module = new AisModule();
         await module.StartAsync(host, null, CancellationToken.None);
-        Assert.True(module.Submit(Report()).Accepted);
+        Assert.True((await SubmissionPolling.UntilRegisteredAsync(() => module.Submit(Report()))).Accepted);
         Assert.True(module.Submit(Report(seconds: 1)).Accepted);
         var state = await module.CaptureStateAsync(CancellationToken.None);
         await module.StopAsync(CancellationToken.None);
@@ -154,8 +157,8 @@ public sealed class AisModuleTests
 
         var restarted = new AisModule();
         await restarted.StartAsync(host, state, CancellationToken.None);
-        Assert.True(restarted.Submit(Report(seconds: 2)).Accepted);
-        await host.Ingestion.WaitUntilAsync(() => host.Ingestion.Observations.Any(o => o.Sequence == 3), "delivery");
+        Assert.True((await SubmissionPolling.UntilRegisteredAsync(() => restarted.Submit(Report(seconds: 2)))).Accepted);
+        await host.Publisher.WaitUntilAsync(() => host.Publisher.Observations.Any(o => o.Sequence == 3), "delivery");
         await restarted.StopAsync(CancellationToken.None);
 
         await Assert.ThrowsAsync<InvalidDataException>(() =>
