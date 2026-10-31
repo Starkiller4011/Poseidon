@@ -1583,6 +1583,58 @@ time for removing the actual cross-process contention; current per-project
 durations suggest the total stays well inside the existing 30/45 minute
 job timeouts, but that's only confirmed once it has actually run in CI.
 
+A fourth push's RHEL and Windows CI runs then both failed fast and
+deterministically (not a timeout) on a different test:
+`TracksModuleTests.Module_CheckpointsItsTracks_AndRestoresThemAfterRestart`,
+`Assert.Single() Failure: The collection was empty`. `-maxCpuCount:1`
+worked exactly as intended (every `Test run for X.dll` in both logs
+completes before the next starts, no interleaving at all), so this is a
+genuinely different bug, not a recurrence of the cross-process contention.
+
+Reproduced locally (not CI-specific): running the whole `CoreTracks.Tests`
+project repeatedly reproduces it roughly 1 run in 3 to 5. Diagnostic output
+added temporarily at the failure point showed `sink.Publish(...).Accepted`
+true (the observation really was enqueued) but every one of
+`TrackManager`'s per-source counters (`Received`/`Created`/etc.) at zero —
+proof `SubmitBatch` was never reached for it at the moment checked, not that
+it was rejected.
+
+Root cause: a genuine TOCTOU race in the test helper `DrainSynchronously`
+(`while (ingress.DrainOnce()) {}`), used by both `TracksModuleTests` and
+`TrackIngressTests`, but only risky where the module's real background pump
+is also running (`TracksModule.StartAsync` calls `ingress.Start()`; only
+`TracksModuleTests` goes through that — `TrackIngressTests` constructs a bare
+`TrackIngress` and never starts it, so it was never at risk).
+`TrackIngress.DrainOnce()` takes its queue snapshot under a lock but then
+dequeues and calls `TrackManager.SubmitBatch` *outside* that lock, so the
+real pump and a test's manual drain can run `DrainOnce()` concurrently: the
+pump can dequeue the one item (so the test's own `DrainOnce()` call finds
+the queue already empty and returns false) while still being mid-call into
+`SubmitBatch` — a caller that asserts on the manager's state immediately
+after `DrainSynchronously` returns can observe that gap. The helper's own
+old comment ("DrainOnce finds nothing once the pump already consumed an
+item") assumed finding nothing meant the pump had *finished*, not just
+*started*; that assumption is what was wrong. Not a production bug — nothing
+in production code ever calls `DrainOnce()` manually like this.
+
+Fixed in `TracksModuleTests.cs` (test-only, mechanical, development
+workflow rule: documented here, not in the test body as a comment on every
+line): the two spots that asserted immediately after
+`DrainSynchronously(publisher)` while the module's pump was still running
+(`Module_AgesTracksOnItsOwnTimer_AndStopsIdempotently`'s first assertion,
+and `Module_CheckpointsItsTracks_AndRestoresThemAfterRestart`) now use the
+file's own `WaitUntil` helper to poll for the expected track count instead
+of asserting on a single snapshot. `DrainSynchronously`'s comment rewritten
+to explain the real race and point future readers at the `WaitUntil`
+pattern. The other `DrainSynchronously` call in
+`Module_AgesTracksOnItsOwnTimer_...` (after the module is stopped) was never
+at risk, since nothing is running the pump by then, and was left as is.
+
+Confirmed locally: 30 runs of `dotnet test Tests/Core/CoreTracks.Tests` in a
+row, zero failures (previously reproduced in roughly 1 of every 3 to 5 runs
+before this fix), plus a full `dotnet test Poseidon.slnx -maxCpuCount:1`
+run, zero failures, no MSB4181.
+
 Not yet done: pushing this fix and confirming it on Windows, Arch Linux and
 RHEL-compatible CI (only run locally so far in this pass). Slice 6's own
 close-out (full solution run, ledger rows, documentation of tuning values

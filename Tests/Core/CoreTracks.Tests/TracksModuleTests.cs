@@ -86,8 +86,11 @@ public sealed class TracksModuleTests
 
     // TrackIngress's background pump (started for real by TracksModule.StartAsync) drains asynchronously, so
     // a test that needs an immediate, deterministic result drains it itself, exactly like TrackIngressTests
-    // does — redundant with the real pump racing it, never harmful (DrainOnce finds nothing once the pump
-    // already consumed an item).
+    // does. This races the real pump, not just redundantly: DrainOnce's snapshot-then-dequeue isn't atomic
+    // with the submit, so the pump can dequeue the item (making this call find the queue already empty) while
+    // still being mid-call into TrackManager.SubmitBatch — a caller that asserts on the manager state right
+    // after this returns can observe that gap. Every caller below waits for the expected state (WaitUntil)
+    // rather than asserting immediately after this call.
     private static void DrainSynchronously(ITrackPublisher publisher)
     {
         while (((TrackIngress)publisher).DrainOnce()) { }
@@ -105,7 +108,7 @@ public sealed class TracksModuleTests
         var sink = publisher.Register(Descriptor(staleSeconds: 10, lostSeconds: 30, removeSeconds: 60));
         Assert.True(sink.Publish(Observation()).Accepted);
         DrainSynchronously(publisher);
-        Assert.Single(feed.GetSnapshot().Tracks);
+        await WaitUntil(() => feed.GetSnapshot().Tracks.Count == 1);
 
         time.Advance(TimeSpan.FromSeconds(60));
         await WaitUntil(() => feed.GetSnapshot().Tracks.Count == 0);
@@ -128,6 +131,7 @@ public sealed class TracksModuleTests
         var sink = publisher.Register(Descriptor());
         Assert.True(sink.Publish(Observation()).Accepted);
         DrainSynchronously(publisher);
+        await WaitUntil(() => feed.GetSnapshot().Tracks.Count == 1);
         var createdId = Assert.Single(feed.GetSnapshot().Tracks).Id;
         var state = await module.CaptureStateAsync(CancellationToken.None);
         await module.StopAsync(CancellationToken.None);
