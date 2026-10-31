@@ -112,18 +112,20 @@ public sealed class RadarModuleTests
     [Fact]
     public async Task Adapter_IsUnavailableUntilStarted_ThenForwardsReportsAndHealth()
     {
+        // Registration now happens on a background task (21.3, R23), so the first Submit after StartAsync
+        // can race it; poll past that window rather than assume it has already completed.
         var module = new RadarModule();
         Assert.Equal(RejectionReason.Unavailable, module.Submit(Report()).Reason);
 
         var host = new FakeTrackHost();
         await module.StartAsync(host, null, CancellationToken.None);
-        Assert.True(module.Submit(Report()).Accepted);
+        Assert.True((await SubmissionPolling.UntilRegisteredAsync(() => module.Submit(Report()))).Accepted);
         module.ReportSourceHealth(SourceHealth.Degraded, "clutter");
         Assert.Equal(RejectionReason.Invalid, module.Submit(Report() with { RangeMetres = 0 }).Reason);
 
-        await host.Ingestion.WaitUntilAsync(() => host.Ingestion.Calls.Count == 2, "delivery");
-        Assert.Equal(new[] { "obs:1", "health:Core.Radar:Degraded" }, host.Ingestion.Calls);
-        Assert.NotNull(host.Ingestion.Observations[0].Position);
+        await host.Publisher.WaitUntilAsync(() => host.Publisher.Calls.Count == 2, "delivery");
+        Assert.Equal(new[] { "obs:1", "health:Core.Radar:Degraded" }, host.Publisher.Calls);
+        Assert.NotNull(host.Publisher.Observations[0].Position);
         await module.StopAsync(CancellationToken.None);
         await module.StopAsync(CancellationToken.None);
         Assert.Equal(RejectionReason.Unavailable, module.Submit(Report()).Reason);
@@ -132,21 +134,86 @@ public sealed class RadarModuleTests
     [Fact]
     public async Task Sequence_IsCheckpointedAcrossRestarts_AndUnsupportedStateIsRejected()
     {
+        // The per-channel sequence counter and its checkpoint live in RadarModule itself now (ObservationRelay
+        // owned this before).
         var host = new FakeTrackHost();
         var module = new RadarModule();
         await module.StartAsync(host, null, CancellationToken.None);
-        Assert.True(module.Submit(Report()).Accepted);
+        Assert.True((await SubmissionPolling.UntilRegisteredAsync(() => module.Submit(Report()))).Accepted);
         var state = await module.CaptureStateAsync(CancellationToken.None);
         await module.StopAsync(CancellationToken.None);
         Assert.NotNull(state);
 
         var restarted = new RadarModule();
         await restarted.StartAsync(host, state, CancellationToken.None);
-        Assert.True(restarted.Submit(Report(seconds: 2)).Accepted);
-        await host.Ingestion.WaitUntilAsync(() => host.Ingestion.Observations.Any(o => o.Sequence == 2), "delivery");
+        Assert.True((await SubmissionPolling.UntilRegisteredAsync(() => restarted.Submit(Report(seconds: 2)))).Accepted);
+        await host.Publisher.WaitUntilAsync(() => host.Publisher.Observations.Any(o => o.Sequence == 2), "delivery");
         await restarted.StopAsync(CancellationToken.None);
 
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             new RadarModule().StartAsync(host, new ModuleState(99, []), CancellationToken.None).AsTask());
+    }
+
+    [Fact]
+    public void SourceIdFor_NamesTheDefaultChannelPlainly_AndOthersWithTheirOwnChannelId()
+    {
+        // 21.4 "Configured radar channel source ID" (R38 to R40): already-real logic, needs no filesystem.
+        Assert.Equal("Core.Radar", RadarModule.SourceIdFor(RadarHardwareConfiguration.DefaultChannelId));
+        Assert.Equal("Core.Radar.Nav1", RadarModule.SourceIdFor("Nav1"));
+    }
+
+    [Theory]
+    [InlineData(24, 5, 10, 15)]
+    [InlineData(60, 5, 10, 15)]
+    [InlineData(12, 10, 20, 30)]
+    public void DescriptorFor_DerivesTimingsFromTheRotationRate_ScalingUpOnlyWhenSlow(
+        double rpm, double staleSeconds, double lostSeconds, double removeSeconds)
+    {
+        // 21.4 "Radar descriptor": interval 60/rpm; stale max(5s, 2x interval); lost 2x stale; remove 3x
+        // stale. 24 to 60 rpm all clamp to the 5 s floor; 12 rpm is slow enough to scale up.
+        var descriptor = RadarModule.DescriptorFor("nav1", rpm);
+        Assert.Equal((TrackSourceKinds.Radar, "Core.Radar.nav1"), (descriptor.Kind, descriptor.SourceId));
+        Assert.Equal(
+            (TimeSpan.FromSeconds(staleSeconds), TimeSpan.FromSeconds(lostSeconds), TimeSpan.FromSeconds(removeSeconds)),
+            (descriptor.StaleAfter, descriptor.LostAfter, descriptor.RemoveAfter));
+    }
+
+    [Fact]
+    public void SetAntennaRotationRate_OnAnUnconfiguredChannel_ThrowsArgumentException()
+    {
+        // R39-style: a channel the module never configured cannot have its rotation rate changed.
+        Assert.Throws<ArgumentException>(() => new RadarModule().SetAntennaRotationRate("nav1", 48));
+    }
+
+    [Fact]
+    public async Task SetAntennaRotationRate_ReRegistersTheDefaultChannelsDescriptorWithTheNewInterval()
+    {
+        // R25, R40: changing the default channel's rotation rate re-registers its descriptor with the new
+        // interval/timings. Registration happens on a background task, so poll for it rather than assume it
+        // has already run by the time SetAntennaRotationRate is called.
+        var host = new FakeTrackHost();
+        var module = new RadarModule();
+        await module.StartAsync(host, null, CancellationToken.None);
+        module.SetAntennaRotationRate(RadarHardwareConfiguration.DefaultChannelId, 12);
+
+        var sourceId = RadarModule.SourceIdFor(RadarHardwareConfiguration.DefaultChannelId);
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        TrackSourceDescriptor? descriptor;
+        while ((descriptor = host.Publisher.LastDescriptor(sourceId)) is null || descriptor.StaleAfter != TimeSpan.FromSeconds(10))
+        {
+            Assert.True(DateTime.UtcNow < deadline, "Timed out waiting for the re-registered descriptor.");
+            await Task.Delay(10);
+        }
+        Assert.Equal(TimeSpan.FromSeconds(10), descriptor.StaleAfter);
+    }
+
+    [Fact]
+    public async Task Submit_WithAChannelIdThatIsNotConfigured_IsRejectedAsInvalid()
+    {
+        // R39: a report naming a channel the module has not configured is rejected, not silently applied to
+        // the wrong (here, the only implicit default) channel.
+        var module = new RadarModule();
+        await module.StartAsync(new FakeTrackHost(), null, CancellationToken.None);
+        Assert.Equal(RejectionReason.Invalid, module.Submit(Report() with { ChannelId = "nav2" }).Reason);
     }
 }

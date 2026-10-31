@@ -126,6 +126,7 @@ public sealed class ShellViewportTests
     {
         public object CreateView() => create();
         public IReadOnlyList<ViewportLayer> Layers => [];
+        public IReadOnlyList<BearingLine> BearingLines => [];
         public void SetLayerVisibility(string layerId, bool visible) => throw new NotSupportedException();
     }
 

@@ -17,6 +17,16 @@ internal sealed class ChartViewport : IChartViewport
 
     public IReadOnlyList<ViewportLayer> Layers => [.. layers];
 
+    // R37: one line per Bearing or Hybrid track currently in the replica, styled by that track's own state.
+    // A Point track never contributes one, even if its Bearing happens to be populated (a not-yet-refining
+    // contribution, per Tracks.cs).
+    public IReadOnlyList<BearingLine> BearingLines =>
+        tracks is null
+            ? []
+            : [.. tracks.Tracks
+                .Where(t => t.Kind is TrackKind.Bearing or TrackKind.Hybrid && t.Bearing is not null)
+                .Select(t => new BearingLine(t.Id, t.State, t.Bearing!.OwnShipPosition, t.Bearing.TrueBearingDegrees))];
+
     // Raised on any thread after a layer's visibility changed.
     internal event Action? LayersChanged;
 
