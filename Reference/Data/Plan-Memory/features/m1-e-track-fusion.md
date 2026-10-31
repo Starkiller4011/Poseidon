@@ -1555,6 +1555,34 @@ If this same class of flake recurs in another assembly that mixes real
 `CoreRadar.Tests`, `CoreUI.Tests` all have real adapters/timers too), the same
 fix applies there.
 
+A third push's RHEL CI run then failed again on the very same
+`SourceDisconnect_IsVisibleInTheFeed_...`, timing out at the new 30s
+deadline, even with per-assembly test-collection parallelism disabled.
+Disabling parallelism inside `CoreTracks.Tests` only addressed contention
+*within* that one process; the CI logs show `dotnet test Poseidon.slnx`
+itself running many projects' VSTest executions concurrently (the default
+for MSBuild/`dotnet test` on a multi-project solution, confirmed locally:
+without a cap, `Test run for X.dll` lines from different projects visibly
+interleave before any one of them finishes). On a CPU-constrained CI
+container, that cross-process contention — not anything inside one test
+assembly — is what starves `TrackIngress`'s/`TrackSourceConnector`'s
+background tasks badly enough to blow any poll deadline; it also explains
+why only the *first* run of `CoreTracks.Tests.dll` in a job has ever failed,
+never the aggregate's later rerun of the same binary, since by then most
+other projects' test runs have already finished and the contention is gone.
+
+Fixed at the actual source this time: added `-maxCpuCount:1` to the
+`dotnet test Poseidon.slnx` invocation in both `.github/scripts/ci-linux.sh`
+and the Windows job of `.github/workflows/build-test-package.yml`, forcing
+every project's build+test to run one at a time instead of all at once.
+Confirmed locally that this flag is honored (every `Test run for X.dll` now
+completes before the next one starts, no interleaving) and that
+`dotnet test Poseidon.slnx -maxCpuCount:1` still passes cleanly end to end.
+This is a CI-script change, not a test-only one, and trades some CI wall
+time for removing the actual cross-process contention; current per-project
+durations suggest the total stays well inside the existing 30/45 minute
+job timeouts, but that's only confirmed once it has actually run in CI.
+
 Not yet done: pushing this fix and confirming it on Windows, Arch Linux and
 RHEL-compatible CI (only run locally so far in this pass). Slice 6's own
 close-out (full solution run, ledger rows, documentation of tuning values

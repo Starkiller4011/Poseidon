@@ -38,8 +38,12 @@ jobs:
         run: dotnet build Core.Application.proj --configuration Release --no-restore
 
       - name: Run all tests
+        # -maxCpuCount:1: without it, MSBuild runs every test project's VSTest target concurrently, which
+        # can starve the real background tasks/timers some integration tests depend on under a loaded
+        # runner (CoreTracks.Tests' TrackPipelineIntegrationTests), causing intermittent timeouts.
         run: >-
           dotnet test Poseidon.slnx
+          -maxCpuCount:1
           --configuration Release
           --no-restore
           --logger "trx;LogFilePrefix=windows"
