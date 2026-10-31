@@ -1,6 +1,6 @@
 # Resume context
 
-Updated: 2026-10-29 (slice 5 accepted; slice 6 not started)
+Updated: 2026-10-31 (slice 5 committed; its PR's cross-platform CI failures fixed; slice 6 not started)
 
 Read this at the start of every session, then
 [development-workflow.md](development-workflow.md), then
@@ -82,9 +82,19 @@ registration/retry loop (`Start`/`StopAsync`); `ChartViewport.BearingLines`
 fusion scenario (R27, R28) passes. Full design, the two bugs found and
 fixed, and the triple-repeated passing run are in the feature file's "Slice
 5 (consumers and integration)" Step 2 and Step 3 ledger entries, not
-repeated here. Gate: waiting for the order to start slice 6 (close-out; see
-21.5: full solution run, ledger rows, documentation of tuning values and
-known limits, then PR and cross-platform CI).
+repeated here. Committed on 2026-10-31 (`ee0e486`).
+
+Its PR then failed cross-platform CI (Windows, Arch Linux, RHEL-compatible):
+a 15s wait margin too tight for a loaded CI runner in one
+`TrackPipelineIntegrationTests` test, and a real registration-race gap (no
+retry at all) after a module reload in another. Both fixed 2026-10-31,
+test-only, same category as slice 4/5's earlier mechanical polling fixes;
+full detail in the feature file's new "Slice 6 (close-out): cross-platform
+CI failures on the slice 5 PR, fixed 2026-10-31" entry. Not yet pushed or
+confirmed on actual CI. Gate: waiting for the order to push this fix and/or
+start slice 6 proper (close-out; see 21.5: full solution run, ledger rows,
+documentation of tuning values and known limits, then PR and cross-platform
+CI).
 
 A second feature is now also in flight, by the user's explicit choice to
 interleave them: [sensor simulators and ComputerGeneratedForce](features/sensor-simulators.md)

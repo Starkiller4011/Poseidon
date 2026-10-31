@@ -1478,5 +1478,57 @@ every CMS smoke project, and `CoreUI.Tests`' `ShellViewportIntegrationTests`),
 with no MSB4181 recurrence. Every row in the slice 5 Step 2 requirement-to-
 test table now passes.
 
-**Accepted by the user on 2026-10-29.** Slice 5 is done. Nothing is
-committed yet. Slice 6 (close-out) has not started.
+**Accepted by the user on 2026-10-29.** Slice 5 is done. Slice 5's code was
+committed on 2026-10-31 (`ee0e486`). Slice 6 (close-out) has not started.
+
+### Slice 6 (close-out): cross-platform CI failures on the slice 5 PR, fixed 2026-10-31
+
+The slice 5 PR's CI failed on all three platforms (Windows, Arch Linux,
+RHEL-compatible). Both failures are in
+`Tests/Core/CoreTracks.Tests/TrackPipelineIntegrationTests.cs`, which
+deliberately exercises the real background registration/retry loop
+(`TrackSourceConnector.Start`, R23) and the real ingress pump
+(`TrackIngress`'s background task) rather than `DrainOnce()`, so these tests
+are exposed to real async scheduling delays that the CI runners apparently
+hit harder than the development machine:
+
+1. `SourceDisconnect_IsVisibleInTheFeed_AndAnObservationRestoresIt` timed out
+   at its 15s deadline on Windows and Arch Linux, but passed cleanly on an
+   immediate retry within the same job (the solution's `Civilian.Tests`/
+   `Military.Tests` aggregates re-run every referenced test project, so each
+   project's tests execute twice per `dotnet test` invocation). Not a logic
+   bug: `WaitForTracks`'s margin was simply too tight for a loaded CI runner.
+2. `Reload_KeepsTrackIdsAndConsumerCursors_AndTheSensorKeepsUpdatingTheSameTrack`
+   failed deterministically (twice) on RHEL with `.Accepted` false immediately
+   after the test's post-reload `Submit`, not a timeout. Touching `CoreTracks`
+   forces `AisModule.StartAsync` to recreate its `TrackSourceConnector`, whose
+   registration against the new `TrackIngress` runs on a background task
+   (21.3, R23) and is not guaranteed to complete before the test's very next
+   `Submit` call, which asserted `.Accepted` with no retry margin at all. The
+   identical race is already handled for the adapter unit tests by
+   `SubmissionPolling.UntilRegisteredAsync` (`Tests/Shared/FakeTrackHost.cs`);
+   this integration test just never got the same treatment.
+3. The RHEL log's trailing `error MSB4181` from `Civilian.Tests` is not a
+   third bug: it is simply how the aggregate's nested
+   `<MSBuild Targets="VSTest">` (`RunCivilianModuleSuites`) echoes an inner
+   test project's failure (documented above, "its usual way of propagating
+   an inner suite failure"). It disappeared once (2) was fixed.
+
+Fixed (test-only, mechanical, development workflow rule: wrong test timing
+assumptions corrected and recorded, not the production code, which is
+correct):
+
+- `WaitForTracks`'s deadline raised from 15s to 30s.
+- Added `SubmitAisUntilRegistered`, the same shape as
+  `SubmissionPolling.UntilRegisteredAsync`, and used it for the one `Submit`
+  that follows a reload in `Reload_KeepsTrackIdsAndConsumerCursors_...`.
+
+Passing run (2026-10-31, Windows): `dotnet build Core.Application.proj`: no
+warnings or errors. `dotnet test Poseidon.slnx` run three times in a row:
+every project passes with zero failures each time, including both
+aggregates (no MSB4181) and `CoreTracks.Tests` (74/74 each time).
+
+Not yet done: pushing this fix and confirming it on Windows, Arch Linux and
+RHEL-compatible CI (the PR only ran locally so far in this pass). Slice 6's
+own close-out (full solution run, ledger rows, documentation of tuning
+values and known limits, then PR/CI) has otherwise not started.

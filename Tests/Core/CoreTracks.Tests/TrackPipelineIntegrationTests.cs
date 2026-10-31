@@ -21,7 +21,9 @@ public sealed class TrackPipelineIntegrationTests
 
     private static async Task<TrackSnapshot> WaitForTracks(ModuleRuntime runtime, Func<TrackSnapshot, bool> condition)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(15);
+        // 30s, not the margin this ever needs: a contended CI runner can starve the ingress pump's background
+        // task well past what a quiet machine would, and this is purely how long the test waits, not what it checks.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
         while (true)
         {
             var snapshot = await Snapshot(runtime);
@@ -29,6 +31,22 @@ public sealed class TrackPipelineIntegrationTests
                 return snapshot;
             Assert.True(DateTime.UtcNow < deadline, "Timed out waiting for the track feed.");
             await Task.Delay(20);
+        }
+    }
+
+    // A module reload recreates each dependent source's TrackSourceConnector (e.g. AisModule.StartAsync), whose
+    // registration runs on a background task (21.3, R23) and can race a Submit made right after ReloadAsync
+    // returns. Polls past that window without changing what a test asserts, the same way SubmissionPolling
+    // already does for the adapter unit tests (Tests/Shared/FakeTrackHost.cs).
+    private static async Task<SubmissionResult> SubmitAisUntilRegistered(ModuleRuntime runtime, AisPositionReport report)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            var result = await SubmitAis(runtime, report);
+            if (result.Reason != RejectionReason.Unavailable || DateTime.UtcNow >= deadline)
+                return result;
+            await Task.Delay(10);
         }
     }
 
@@ -155,7 +173,7 @@ public sealed class TrackPipelineIntegrationTests
         Assert.False(changes.ResyncRequired);
         Assert.Empty(changes.Changes);
 
-        Assert.True((await SubmitAis(modules.Runtime, Ais(seconds: 10))).Accepted);
+        Assert.True((await SubmitAisUntilRegistered(modules.Runtime, Ais(seconds: 10))).Accepted);
         var after = await WaitForTracks(modules.Runtime, s => s.Tracks.Any(t => t.UpdateCount == 2));
         var track = Assert.Single(after.Tracks);
         Assert.Equal((before.Tracks[0].Id, before.Epoch), (track.Id, after.Epoch));
