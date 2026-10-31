@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.4">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\System\Core\CoreTracks\CoreTracks.csproj" />
+    <ProjectReference Include="..\..\..\System\Core\Core\Core.csproj" />
+    <ProjectReference Include="..\..\..\System\Core\CoreAIS\CoreAIS.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\..\System\Core\CoreRadar\CoreRadar.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\..\System\Core\CoreSonar\CoreSonar.csproj" ReferenceOutputAssembly="false" />
+    <None Include="..\..\..\System\Core\CoreAIS\module.json" Link="packages\CoreAIS\module.json"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\System\Core\CoreRadar\module.json" Link="packages\CoreRadar\module.json"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\System\Core\CoreSonar\module.json" Link="packages\CoreSonar\module.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Real sensor packages for runtime integration tests; the sensors are not compile-time references. -->
+  <Target Name="CopySensorPackages" AfterTargets="Build">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\..\System\Core\CoreAIS\bin\$(Configuration)\net10.0\CoreAIS.dll"
+          DestinationFolder="$(TargetDir)packages\CoreAIS" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\..\System\Core\CoreRadar\bin\$(Configuration)\net10.0\CoreRadar.dll"
+          DestinationFolder="$(TargetDir)packages\CoreRadar" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\..\System\Core\CoreSonar\bin\$(Configuration)\net10.0\CoreSonar.dll"
+          DestinationFolder="$(TargetDir)packages\CoreSonar" />
+  </Target>
+
+</Project>

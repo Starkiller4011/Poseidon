@@ -12,5 +12,6 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" PrivateAssets="all" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" PrivateAssets="all" />
     <ProjectReference Include="..\..\..\System\Shared\Contracts\Contracts.csproj" />
+    <Compile Include="..\FakeTrackHost.cs" Link="FakeTrackHost.cs" />
   </ItemGroup>
 </Project>

@@ -1,7 +1,8 @@
 # Poseidon
 
-Modular maritime desktop application targeting .NET 10 and Avalonia on Windows
-and Linux. macOS is outside the supported scope. Development is currently at the
+Modular maritime desktop application targeting .NET 10 and Avalonia on Windows,
+Arch Linux, and RHEL. macOS is outside the supported scope. Development is
+currently at the
 reloadable-host foundation; chart reading/drawing, track management, navigation
 calculations and device adapters are not implemented yet.
 
@@ -17,8 +18,9 @@ dotnet run --project System/Core/Core/Core.csproj --no-build
 
 Core remains the sole application executable. The build orchestration deploys
 the eight core modules into the host output's `modules` directory; Core has no
-project reference to those implementations. CoreUI supplies the normal window;
-the host retains a small recovery window if CoreUI is missing or fails.
+project reference to those implementations. CoreUI supplies the normal window,
+which hosts Display's chart viewport next to the module diagnostics; the host
+retains a small recovery window if CoreUI is missing or fails.
 At startup, Core shows a borderless black splash with centered bold white
 "Poseidon" text while discovering and loading modules. The splash closes when
 initial loading completes; missing or failed CoreUI falls back to recovery.
@@ -46,7 +48,10 @@ shared-contract tests, runtime integration tests, and headless Avalonia UI tests
 rather than only the aggregate smoke fact. Individual module projects can also
 be tested independently. The existing military
 aggregate/CMS scaffolding is deferred and is not the current validation gate.
-Windows and Ubuntu build/test jobs are defined in the core workflow.
+Windows, Arch Linux, and RHEL are the target build/test environments. The full
+solution builds, tests, publishes, and stages modules on all three in CI
+(Windows natively; Arch Linux and RHEL-compatible UBI 9 in containers). Native
+Linux desktop smoke verification remains pending.
 
 Collect production-code coverage using the existing Coverlet collector:
 
@@ -58,7 +63,25 @@ Reports are written under each test project's ignored `TestResults` directory.
 The coverage settings exclude test/fixture assemblies, not application code.
 Headless UI tests exercise commands, status updates, close/restart behavior and
 recovery-window visibility without requiring a display server. These complement,
-but do not replace, real Windows/Linux desktop smoke tests.
+but do not replace, real Windows/Arch Linux/RHEL desktop smoke tests.
+
+## Continuous integration
+
+The [Cross-Platform Build, Test, and Package workflow](.github/workflows/build-test-package.yml)
+runs for pull requests and manual dispatches. It provides:
+
+- a native GitHub-hosted Windows build, full solution test run, civilian
+  coverage collection, and packaged application artifact;
+- an Arch Linux container build, full solution test run, and packaged
+  application artifact; and
+- a Red Hat UBI 9 container build, full solution test run, and packaged
+  application artifact as the initial RHEL-compatible gate.
+
+The Linux container jobs use [.github/scripts/ci-linux.sh](.github/scripts/ci-linux.sh)
+to install the .NET 10 SDK and distribution dependencies consistently. They
+validate managed behavior, case-sensitive paths, packaging, and Linux runtime
+dependencies, but they are not native-distribution GUI certification. Native
+Arch Linux and RHEL runners with real desktop smoke tests remain an M1 gate.
 
 ## Module deployment and hot reload
 
@@ -118,7 +141,11 @@ Manifests declare what a module changes. Unknown manifest fields are rejected.
   feature ID may target it; `multiple`: any number) and an optional `contract`
   (the full name of a shared interface every contribution must implement). The
   module that owns a concept declares its points; the host itself only owns
-  `shell.host` (`ExtensionPoints.Shell`, contract `IShell`).
+  `shell.host` (`ExtensionPoints.Shell`, contract `IShell`). Display declares
+  `display.viewport` (`single`, contract `IChartViewport`) and contributes its
+  own viewport to it, so it needs no other module; CoreUI finds the effective
+  viewport contribution in the runtime status and hosts it without referencing
+  Display, showing an explicit unavailable state when none exists.
 - **`contributions`** register features with a point. A contribution adds a new
   feature (UI such as a shell, chart layer or panel; or a service). Its `id` is
   the key the module registers in `IModule.Features`, and registrations must
@@ -197,6 +224,7 @@ Initialize chart-test dependencies when needed:
 git submodule update --init --recursive
 ```
 
-See the [application plan](Reference/Data/Plan-Memory/2026-10-24-poseidon-application-plan.md)
-and [chart mappings](Reference/Data/Feature-Mappings/README.md) for ownership,
-milestones and the remaining data-reader work.
+See the [master plan](Reference/Data/Plan-Memory/poseidon-master-plan.md),
+the [development workflow](Reference/Data/Plan-Memory/development-workflow.md)
+and [chart mappings](Reference/Data/Plan-Memory/Feature-Mappings/README.md) for ownership,
+milestones, how features are developed and the remaining data-reader work.

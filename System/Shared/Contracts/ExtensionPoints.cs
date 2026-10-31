@@ -12,11 +12,13 @@ public static class ExtensionPoints
 {
     public const string Shell = "shell.host";
 
+    private static string HostContractVersion => typeof(IShell).Assembly.GetName().Version?.ToString() ?? new Version().ToString();
+
     public static IReadOnlyList<ExtensionPoint> Host { get; } =
     [
         new ExtensionPoint
         {
-            Id = Shell, Version = "1.0.0", Cardinality = PointCardinality.Multiple,
+            Id = Shell, Version = HostContractVersion, Cardinality = PointCardinality.Multiple,
             Contract = typeof(IShell).FullName
         }
     ];

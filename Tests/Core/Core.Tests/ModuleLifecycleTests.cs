@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Poseidon.Core.Modules;
 using Xunit;
 
 namespace Core.Tests;
@@ -28,6 +29,22 @@ public sealed partial class ModuleRuntimeTests
     }
 
     [Fact]
+    public async Task InvalidFeatureDeclarationUpdate_RetainsLastKnownGoodVersion()
+    {
+        await using var test = new RuntimeTest();
+        test.Package("base", "good");
+        Assert.True(await test.Runtime.ReloadAsync());
+        test.Package("base", "bad");
+        ConfigureFixture(test, "base", "FeatureMode", JsonValue.Create("null")!);
+        Assert.False(await test.Runtime.ReloadAsync());
+        Assert.Equal("good:1", await test.Read());
+        Assert.Equal(1, test.Runtime.Status.Generation);
+        var status = test.State("base");
+        Assert.Equal(PackageState.Retained, status.State);
+        Assert.Contains("Null feature", status.Detail);
+    }
+
+    [Fact]
     public async Task CaptureFailure_PreservesActiveInstanceWithoutStoppingIt()
     {
         await using var test = new RuntimeTest();
@@ -52,6 +69,9 @@ public sealed partial class ModuleRuntimeTests
         Assert.Empty(test.Runtime.Status.Modules);
         Assert.Empty(test.Runtime.Status.Features);
         Assert.Contains(test.Runtime.Status.Diagnostics, d => d.Contains("Rollback failed"));
+        var package = Assert.Single(test.Runtime.Status.Packages);
+        Assert.Equal(PackageState.Failed, package.State);
+        Assert.Contains("restart required", package.Detail);
         Assert.False(await test.Runtime.ReloadAsync());
     }
 
