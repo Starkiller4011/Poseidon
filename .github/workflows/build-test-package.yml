@@ -50,8 +50,11 @@ jobs:
           --results-directory artifacts/test-results/windows
 
       - name: Collect civilian coverage
+        # -maxCpuCount:1: same reason as the "Run all tests" step above. This is a separate dotnet test
+        # invocation with its own MSBuild process, so the flag has to be repeated here too.
         run: >-
           dotnet test Tests/Aggregate/Civilian.Tests/Civilian.Tests.csproj
+          -maxCpuCount:1
           --configuration Release
           --no-restore
           --collect "XPlat Code Coverage"

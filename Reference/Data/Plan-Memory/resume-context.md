@@ -1,6 +1,6 @@
 # Resume context
 
-Updated: 2026-10-31 (slice 5 committed; its PR's cross-platform CI failures fixed; slice 6 not started)
+Updated: 2026-10-31 (slice 5 committed, PR CI green on all three platforms, slice 6 close-out done and presented for acceptance)
 
 Read this at the start of every session, then
 [development-workflow.md](development-workflow.md), then
@@ -70,8 +70,8 @@ through tests then code with a gate after each.
 | Step | State | Detail |
 |---|---|---|
 | 1. Plan | Done, approved by the user on 2026-10-26 | Includes the bearing amendment (21.12), the sequencing change (21.5) and the multi-sensor-channel amendment (21.13, 2026-10-28) |
-| 2. Tests | Slices 1 to 5 done and approved | Next is slice 6 |
-| 3. Code | Slices 1 to 5 merged/accepted | Remaining: slice 6. The contracts draft in `features/m1-e-track-fusion-contracts-draft.md` is a starting point but predates slices 3 to 5 |
+| 2. Tests | Slices 1 to 5 done and approved; slice 6 has no tests of its own (close-out) | Done |
+| 3. Code | Slices 1 to 5 merged/accepted; slice 6 (close-out) done and presented | Waiting on the user's acceptance and the PR merge. The contracts draft in `features/m1-e-track-fusion-contracts-draft.md` is a starting point but predates slices 3 to 5 |
 
 Progress: slice 5 (consumers and integration) is accepted by the user on
 2026-10-29: `ObservationRelay`/`ITrackIngestion` are removed outright (no
@@ -84,17 +84,26 @@ fixed, and the triple-repeated passing run are in the feature file's "Slice
 5 (consumers and integration)" Step 2 and Step 3 ledger entries, not
 repeated here. Committed on 2026-10-31 (`ee0e486`).
 
-Its PR then failed cross-platform CI (Windows, Arch Linux, RHEL-compatible):
-a 15s wait margin too tight for a loaded CI runner in one
-`TrackPipelineIntegrationTests` test, and a real registration-race gap (no
-retry at all) after a module reload in another. Both fixed 2026-10-31,
-test-only, same category as slice 4/5's earlier mechanical polling fixes;
-full detail in the feature file's new "Slice 6 (close-out): cross-platform
-CI failures on the slice 5 PR, fixed 2026-10-31" entry. Not yet pushed or
-confirmed on actual CI. Gate: waiting for the order to push this fix and/or
-start slice 6 proper (close-out; see 21.5: full solution run, ledger rows,
-documentation of tuning values and known limits, then PR and cross-platform
-CI).
+Its PR then failed cross-platform CI (Windows, Arch Linux, RHEL-compatible)
+across four rounds of fixes, each a distinct cause: a 15s wait margin too
+tight for a loaded CI runner; a real registration-race gap (no retry) after
+a module reload; cross-process test-execution contention from `dotnet
+test`'s default parallel project execution (fixed with `-maxCpuCount:1` in
+both CI workflows); and a real drain/pump TOCTOU race in
+`TracksModuleTests.cs`'s test helper, exposed once CI runs became fully
+serial. All fixed and pushed 2026-10-31; CI is now green on all three
+platforms. Full detail in the feature file's "Slice 6 (close-out):
+cross-platform CI failures on the slice 5 PR, fixed 2026-10-31" entry.
+
+Slice 6 (close-out) itself is now also done, per 21.5 item 6: a final full
+solution run (430 unique tests, zero failures, Windows), a consolidated
+requirement-to-test ledger (R1 to R40 with R16a, every row a real passing
+test) and a "known gaps and follow-ups" list superseding the pre-rework
+pipeline's own, both in the feature file's new "Slice 6 (close-out):
+requirement ledger, known limits and final verification, 2026-10-31" entry.
+The PR already has green cross-platform CI from the fix pass above. Gate:
+presented to the user; M1-E rework is complete once they accept it and the
+PR is merged.
 
 A second feature is now also in flight, by the user's explicit choice to
 interleave them: [sensor simulators and ComputerGeneratedForce](features/sensor-simulators.md)
@@ -216,17 +225,15 @@ Earlier (before this session; slice 1, now merged):
 
 ## What needs to be done next
 
-1. **Slice 6 (close-out)**, on the user's order (see 21.5): full solution
-   run, ledger rows, documentation of tuning values and known limits, then
-   PR and cross-platform CI. M1-E as built is not accepted until this is
-   done and CI passes on Windows, Arch Linux and RHEL-compatible containers.
-2. **Sensor-simulators Step 2 (tests)**, on the user's order, may proceed
-   alongside the above (plan approved 2026-10-27); its Step 3 (code) still
-   waits until M1-E (slices 5 to 6) is done.
-3. Slice 6 of M1-E (close-out) has not started; see 21.5.
-4. Tuning (later, when real data is available): the 200 m join and split
-   distance, the declared peak report rates and the other starting values in
-   section 21.4.
-5. M1-E as built is not accepted until the rework is done and CI passes on
-   Windows, Arch Linux and RHEL-compatible containers; the M1-C and M1-F
-   planning has not started.
+1. **User acceptance of slice 6 (close-out) and the PR merge.** Everything
+   21.5 item 6 asks for is done: full solution run (430 unique tests, zero
+   failures), the consolidated requirement-to-test ledger, the known-gaps
+   documentation, and green cross-platform CI on the slice 5 PR. M1-E
+   rework is complete once the user accepts and the PR is merged.
+2. **Sensor-simulators Step 2 (tests)**, on the user's order, may now
+   proceed (plan approved 2026-10-27, M1-E slices 5/6 are done); its Step 3
+   (code) still waits until M1-E is fully accepted and merged.
+3. Tuning (later, when real data is available): the 200 m join and split
+   distance, the declared peak report rates and the other starting values
+   in section 21.4 — explicitly deferred, not a blocker for acceptance.
+4. The M1-C and M1-F planning has not started.
