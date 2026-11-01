@@ -1641,7 +1641,25 @@ run, zero failures, no MSB4181.
 Pushed and confirmed: CI passed on all three platforms (Windows, Arch
 Linux, RHEL-compatible) on the next run. The slice 5 PR's CI is green.
 
-### Slice 6 (close-out): requirement ledger, known limits and final verification, 2026-10-31
+A later PR run then failed again on Windows, same symptom: `Civilian.Tests`
+failing with the trailing `MSB4181`, and `SourceDisconnect_IsVisibleInTheFeed_
+AndAnObservationRestoresIt` timing out at the 30s `WaitForTracks` deadline in
+the log underneath it. Not a recurrence of the same contention inside
+`dotnet test Poseidon.slnx`: that invocation (`build-test-package.yml`'s "Run
+all tests" step) already has `-maxCpuCount:1` and had already passed in the
+same job. The failure was in the separate "Collect civilian coverage" step,
+which runs `dotnet test Tests/Aggregate/Civilian.Tests/Civilian.Tests.csproj`
+as its own `dotnet test` invocation (for `--collect "XPlat Code Coverage"`)
+and never got the `-maxCpuCount:1` flag when it was added to the first step:
+its nested `<MSBuild Targets="VSTest">` reruns every inner test project
+concurrently again, reproducing the exact cross-process contention already
+diagnosed above. `ci-linux.sh` has no equivalent separate coverage step, so
+Arch Linux and RHEL were never exposed to this.
+
+Fixed (CI-script only): added `-maxCpuCount:1` to the "Collect civilian
+coverage" step in `build-test-package.yml` as well.
+
+
 
 Per 21.5 item 6: full solution run, ledger rows, documentation of tuning
 values and known limits, then PR and cross-platform CI (the PR's CI is
