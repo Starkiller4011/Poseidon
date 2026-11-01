@@ -1675,6 +1675,43 @@ project. Unique test count across the whole solution: 430 (Contracts.Tests
 CoreNavigation.Tests 8, CoreSonar.Tests 8, nine CMS smoke projects at 1
 each, Civilian.Tests 1, Military.Tests 1).
 
+### Post-merge recurrence: RHEL CI, M1-H/M1-I PR, 2026-11-01 — open, not fixed
+
+The same signature recurred on a later PR (M1-H/M1-I, unrelated to track
+code) on RHEL only: `SourceDisconnect_IsVisibleInTheFeed_AndAnObservationRestoresIt`
+timed out at the 30s `WaitForTracks` deadline inside `Civilian.Tests`' nested
+`RunCivilianModuleSuites` rerun, then passed instantly (1s, 74/74) when
+`CoreTracks.Tests` ran again later in the same job as its own top-level
+project — trailing `MSB4181` included, same as every prior round.
+
+This corrects the "Arch Linux and RHEL were never exposed to this" note
+above: `ci-linux.sh`'s single `dotnet test Poseidon.slnx -maxCpuCount:1` step
+already has the flag and had it the whole time, so the cross-project VSTest
+overlap that flag fixes was not the cause here. The working theory was a
+genuinely cold first test run on these Linux jobs: no SDK/package caching,
+`dnf`/subscription-manager overhead and a 240MB SDK download all happen in
+the same job immediately before testing starts, and the container shares a
+2-vCPU GitHub-hosted runner.
+
+A plain rerun of the same job (no code change) then passed. So this was
+**not fixed**: `WaitForTracks`'s deadline was raised to 60s and then
+**reverted back to 30s** on the user's explicit instruction — he does not
+want a test whose failures are papered over by widening margins every time
+CI happens to be slow, without knowing why. The cold-container theory above
+is unconfirmed (never actually measured per-step timing on a failing RHEL
+run) and may not even be the real cause, given the rerun passed without any
+change at all.
+
+**Left open, to revisit:** this exact test (`SourceDisconnect_IsVisibleInTheFeed_
+AndAnObservationRestoresIt`, and by extension the other `WaitForTracks`-based
+cases in this file) is still capable of failing once and passing on an
+unmodified rerun. Before touching the margin again, get real evidence from a
+failing run: per-step timing/instrumentation in `WaitForTracks` (e.g. log how
+far the deadline was missed by, not just assert), and confirm whether it's
+genuinely wall-clock starvation (cold container) or a race (like the
+`DrainSynchronously` TOCTOU bug found earlier in this same file) that a
+longer timeout only hides more often than it triggers.
+
 **Requirement-to-test ledger (M1-E rework, R1 to R40 with R16a).** Test
 classes are under `Tests/Core/CoreTracks.Tests` unless noted; `Contracts`
 means `Tests/Shared/Contracts.Tests`.
