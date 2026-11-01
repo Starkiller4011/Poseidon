@@ -23,6 +23,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\System\Core\CoreCharts\CoreCharts.csproj" />
+    <!-- The real module runtime, for deploying the CoreCharts package in integration tests (C27). -->
+    <ProjectReference Include="..\..\..\System\Core\Core\Core.csproj" />
   </ItemGroup>
 
 </Project>

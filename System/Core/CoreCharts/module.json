@@ -1,5 +1,14 @@
 {
   "id": "Core.Charts",
-  "version": "0.0.1",
-  "entryAssembly": "CoreCharts.dll"
+  "version": "0.1.0",
+  "entryAssembly": "CoreCharts.dll",
+  "provides": [
+    {
+      "id": "charts.library", "version": "0.1.0", "cardinality": "single",
+      "contract": "Poseidon.Core.Modules.IChartLibrary"
+    }
+  ],
+  "contributions": [
+    { "point": "charts.library", "id": "core.charts.library", "version": "0.1.0" }
+  ]
 }

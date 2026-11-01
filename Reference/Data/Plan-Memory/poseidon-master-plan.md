@@ -16,7 +16,13 @@ layout and input devices), a new milestone depending on M1-B and largely a
 refactor of M1-B's own CoreUI shell code, is implemented and passing as of
 2026-11-01, awaiting the user's acceptance to close out. M1-I (module
 logging), a new milestone depending on M1-A, is implemented and passing
-as of 2026-11-01, awaiting the user's acceptance to close out. Sensor-simulators (plan approved 2026-10-27) is
+as of 2026-11-01, awaiting the user's acceptance to close out. M1-C
+(chart-data pipeline) has a Step 1 plan revised after a full audit of the
+IHO documents and submodules (normative material complete, fixtures moved
+to S-101 2.0.0), approved 2026-11-01 with an amendment for C27; Step 2
+tests approved; Step 3 code done 2026-11-01, its gate items (three test
+corrections, a managed store in place of SQLite) approved; awaiting the
+user's acceptance to close out. Sensor-simulators (plan approved 2026-10-27) is
 deferred by the user's explicit choice on 2026-11-01: no further work on it
 until picked back up. This is not a certification claim.
 
@@ -30,6 +36,7 @@ All files are in `Reference/Data/Plan-Memory/`.
 | [resume-context.md](resume-context.md) | How to resume work: the primary resume context, the last changes made and what needs to be done next. Read it at the start of every session |
 | This file | Purpose, architecture, milestones, open cross-cutting decisions |
 | [Feature-Mappings/](Feature-Mappings/README.md) | The data format schema mappings of the input data used for chart data (S-101, S-158 and S-164). Reference material for the chart features, not a plan |
+| [Specifications/](Specifications/README.md) | Normative IHO specification documents fetched directly from IHO's public downloads (currently S-100 Part 10a, ISO/IEC 8211 Encoding), with provenance. Reference material, not a plan |
 | `features/*.md` | One file per feature: plan, requirements, decisions, ledger and status |
 
 ### Features
@@ -38,7 +45,7 @@ All files are in `Reference/Data/Plan-Memory/`.
 |---|---|---|
 | [m1-a-host-and-module-loading.md](features/m1-a-host-and-module-loading.md) | M1-A | Done for the automated gate; native Linux desktop smoke tests deferred to M1-G |
 | [m1-b-ui-and-viewport.md](features/m1-b-ui-and-viewport.md) | M1-B | Done; merged after cross-platform CI |
-| [m1-c-chart-data-pipeline.md](features/m1-c-chart-data-pipeline.md) | M1-C | Not started; no plan approved |
+| [m1-c-chart-data-pipeline.md](features/m1-c-chart-data-pipeline.md) | M1-C | Step 1 plan revised 2026-11-01 after a full documentation and fixture audit (normative material complete; fixtures moved to S-101 2.0.0; 37 requirements); plan approved 2026-11-01. Step 2 tests approved. Step 3: code done; gate items approved (test corrections D5-D7, managed store instead of SQLite); awaiting acceptance |
 | [m1-e-track-pipeline.md](features/m1-e-track-pipeline.md) | M1-E (as built) | Superseded by the rework below; kept for history only |
 | [m1-e-track-fusion.md](features/m1-e-track-fusion.md) | M1-E (rework) | Done. All 6 slices accepted; PR #7 merged to `dev` 2026-11-01 (`c01fd22`) with green cross-platform CI |
 | [m1-h-ui-extensibility.md](features/m1-h-ui-extensibility.md) | M1-H (new) | Plan and tests approved; Step 3 (code) done and passing (`dotnet test Poseidon.slnx -maxCpuCount:1` green), 2026-11-01. Awaiting the user's acceptance to close out the milestone |
@@ -143,6 +150,57 @@ S-158/S-164 in this corpus wrap or exercise S-101 payloads; they are not two
 additional chart decoders. Do not claim support for all S-100 products from
 support for these three directories. The M1-C feature
 ([m1-c-chart-data-pipeline.md](features/m1-c-chart-data-pipeline.md)) builds on
+them.
+
+The actual normative binary-encoding specification (not test-corpus
+evidence) lives in [Specifications/](Specifications/README.md) —
+currently S-100 Edition 5.1.0, Part 10a (ISO/IEC 8211 Encoding), fetched
+directly from IHO's public download 2026-11-01.
+
+`Reference/Data/S-101/`, `S-102/`, `S-104/`, `S-111/` and `S-124/` hold
+UKHO-licensed S-100 trial data downloaded by the user (S-101: a UKHO
+exchange set of April 2026 and SHOM exchange sets of June 2026). It is
+local reference only, excluded in the root `.gitignore` and never
+committed; tests that use it skip when it is absent.
+
+What the non-S-101 products contain (explored 2026-11-01, for the later
+overlay work; out of M1-C's scope):
+
+| Product | UKHO | SHOM | Format and notes |
+|---|---|---|---|
+| S-102 3.0.0 bathymetric surface | 18 grids, April 2026, signed | 7 grids (Saint-Malo, 5 m), May 2026, signed | HDF5 (S-100 Part 10c): `BathymetryCoverage` regular grid of depth+uncertainty (up to 2001x2001); SHOM adds the optional `QualityOfBathymetryCoverage` layer and per-dataset XML metadata |
+| S-104 2.0.0 water level | 5 grids + 1 S-128, May 2026, signed | 42 weekly prediction grids, May-July 2026, placeholder signatures, no `CATALOG.SIGN` | HDF5 time series: one `Group_NNN` per 15-minute step (about 576-672 per file) of height+trend(+uncertainty) |
+| S-111 2.0.0 surface currents | 5 grids + 1 S-128, May 2026, signed | 266 prediction grids (TELEMAC model), placeholder signatures, no `CATALOG.SIGN` | HDF5 time series of speed+direction |
+| S-124 2.0.0 navigational warnings | 5 NAVAREA I warnings, signed | — | GML (S-100 Part 10b), with a byte-order mark |
+| S-128 catalogue of nautical products | Inside the S-104/S-111 sets | — | GML listing the gridded datasets beside it |
+
+Producer variants a reader would need to tolerate: UKHO stores HDF5 root
+attributes as one-element arrays, SHOM as scalars; the `Group_F` field is
+`dataType` (UKHO) or `datatype` (SHOM); every set from the UKHO toolchain
+signs with `S100_SE_DigitalSignature`, SHOM's own S-101 tooling with
+`S100_SE_SignatureOnData`. Every real signature verifies (ECDSA/SHA-384,
+IHO S-100 5.2.0 root); SHOM's S-104/S-111 carry placeholder text instead.
+
+`Reference/Data/distribution_20240521/` holds the S-100 schema server's
+2024-05-21 archive of the 5.0.0/5.1.0/5.2.0 XML schemas (provenance in
+[Specifications/](Specifications/README.md)).
+
+`Reference/Data/S-100 Documentation/` holds a bulk download of official
+IHO documents (product specifications, feature/portrayal catalogues,
+S-158 validation-check documents, S-130 sample data); zip files there are
+kept extracted into same-named sibling folders. `Reference/Data` also
+carries 13 further `iho-ohi` GitHub submodules beyond
+`S-101-Test-Datasets`, declared in [.gitmodules](../../../.gitmodules):
+`S-100-Standard-Development`, `S-100-xmlbindings`, `S-101-Validation`,
+`S-100-Validation-Checks`, `S-101_Portrayal-Catalogue`,
+`S-164-Sub-Group`, `NIWCSoftwareTestbed`, `S100Infrastructure`,
+`S100Resources`, `S-100UML`, `S-100WG`, `ENCWG`, and
+`S100-Security-Scheme-PT`, plus the unofficial, unlicensed
+`kusala9/s100tds` (S-101 update-permutation test data, used by M1-C's
+update tests). These are working-group/product-development
+repositories, not all in M1-C's current scope (S-101 only); treat them as
+a reference corpus to draw on as later milestones (M1-D portrayal, future
+products) need them, not as a claim that Poseidon supports everything in
 them.
 
 ## Established requirements
@@ -266,7 +324,7 @@ working on M1. Each work package is a feature (or several) developed under
 |---|---|---|---|
 | M1-A: Host and contracts | None | Restore shared types; keep Core as executable and modules as libraries; hot reload/overrides and repeatable packaging; no-module startup; replacement/removal/rollback tests on Windows, Arch Linux, and RHEL; independent core-module tests | Done for the automated gate |
 | M1-B: UI and viewport | M1-A | CoreUI owns normal UI; Display contributes empty viewport and layer API; UI/Display reload without restarting Core; diagnostics/recovery remain available | Done (its diagnostics/reload/exit panel is later removed from CoreUI's shell entirely by M1-H, which also refactors most of its layout code) |
-| M1-C: Chart-data pipeline | M1-A | Audit specifications/resources, pin fixture versions; Charts decodes a real base cell; verify metadata, attributes, topology and malformed-input diagnostics | Not started |
+| M1-C: Chart-data pipeline | M1-A | Audit specifications/resources, pin fixture versions; Charts decodes a real base cell; verify metadata, attributes, topology and malformed-input diagnostics | Code done 2026-11-01; gate items approved; awaiting acceptance |
 | M1-D: Integrated chart view | M1-B, M1-C | Display draws Charts data; pan/zoom, locked base, overlays, contour slider and feature inspection; demonstrate Charts/Display provider replacement | Not started |
 | M1-E: Track pipeline | M1-A; UI integration needs M1-B | Tracks contracts/manager plus AIS/Radar adapter boundaries (Sonar is not a track source); recorded/simulated observations produce managed tracks and Display updates; lifecycle, resync and reload tests; fusion, per-source timings and queue ingress (rework) | Done. Fusion rework merged 2026-11-01 (PR #7, `c01fd22`) |
 | M1-F: Navigation functions | M1-E | Own-ship state and tested CPA/TCPA; Display annotations; unavailable/stale/degenerate-motion behavior is explicit; a fault when own-ship position or heading is unavailable | Not started |
@@ -321,6 +379,7 @@ milestones:
 | Platform details | Windows, Arch Linux, and RHEL confirmed; macOS excluded. Select Linux windowing environments, architectures and hardware | M1-A test/publish matrix |
 | Inputs/protocols | Recorded and simulated observations before live devices; select AIS/Radar device protocols separately (Sonar is depth/bathymetry, outside the track pipeline) | M1-E and later device integration |
 | Route/navigation behavior | Navigation owns route state/calculations; Display owns map interaction; Charts supplies chart data | M1-F and later route tools |
+| Non-ENC S-100 products (S-102, S-104, S-111, S-124, S-128) | Not provisional yet. Open: which module reads them (Charts, as S-100 chart data, or another module; S-102 overlaps Sonar's bathymetry role), which milestone, and how HDF5 is read (in-house or a library, given M1-C's in-house ISO 8211 choice). Real data and its producer variants are recorded under "Reference data mappings" | Planning of the first overlay milestone |
 
 Chart-related decisions (product and specification versions, trust and
 licensing, portrayal and certification) are in

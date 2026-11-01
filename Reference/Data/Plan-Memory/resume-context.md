@@ -1,6 +1,6 @@
 # Resume context
 
-Updated: 2026-11-01 (M1-E fusion rework accepted and merged, PR #7/`c01fd22`; sensor-simulators deferred; M1-H code done and passing, awaiting acceptance; M1-I code done and passing, awaiting acceptance)
+Updated: 2026-11-01 (M1-E fusion rework accepted and merged, PR #7/`c01fd22`; sensor-simulators deferred; M1-H code done and passing, awaiting acceptance; M1-I code done and passing, awaiting acceptance; M1-C Step 3 code done, at the Step 3 gate with three held test defects)
 
 Read this at the start of every session, then
 [development-workflow.md](development-workflow.md), then
@@ -125,6 +125,48 @@ accidental regression. Full detail, including the requirement-to-test
 ledger, is in the feature file's Step 3 entry, not repeated here. Gate:
 waiting for the user's acceptance to close out M1-I.
 
+A third feature is also in flight, by the user's explicit choice to start it
+now rather than wait for M1-H/M1-I acceptance:
+[M1-C: Chart-data pipeline](features/m1-c-chart-data-pipeline.md) (depends
+only on M1-A, done). Charts reads real S-101 exchange sets (exchange-set
+catalogue, a bounded ISO 8211 container reader, S-101 feature/geometry
+decoding, base/update lineage, an immutable chart store) and exposes typed
+query results; Display is not touched until M1-D.
+
+| Step | State | Detail |
+|---|---|---|
+| 3. Code | Done; gate items approved 2026-11-01 | All of Slices 1-5 implemented; test defects D5-D7 corrected as approved; C30 baseline recorded; awaiting acceptance |
+| 2. Tests | Approved 2026-11-01; three corrections proposed | All 37 requirements covered (165 new tests incl. 70 s100tds cases; 9 local-only); every new test fails with `NotImplementedException` except the C27 no-Charts regression guard, which already passes; ledger in the feature file. Gate items: proposed C17 wording change (older-edition update not flagged not-up-to-date) and a CI change to check out three submodules |
+| 1. Plan | Done, approved 2026-11-01 (with its Step 2 amendment) | 37 requirements (C1-C37) across 5 slices; Q1-Q10 all answered; amendment: host-shared `IChartLibrary` contract in `System/Shared/Contracts/Charts.cs` for C27 (C27 reworded); revised 2026-11-01 after auditing the IHO documents and submodules against real bytes, raising Q6 (supported editions), Q7 (signature integrity) and Q8 (XML schemas, answered by the user's download) |
+
+Progress: fixtures audited directly in the `S-101-Test-Datasets` submodule
+(the `S-101_1.2` standalone base cell with its YAML sidecar as the decode
+oracle; the smallest `S-158` case; the `S-164` Power-Up/Loading-of-Updates/
+Invalid-Sequence/Re-issue/Cancellation/Corrupt-Update/Loading-Corrupt-Data
+scenarios for lineage coverage). Chart store upgraded from in-memory to an
+embedded database (assumed SQLite) with a cache kept warm for a
+caller-named reference cell plus its catalogue-adjacent neighbors (the
+user's explicit Q3 answer), adding C31-C33. Fetched and read the real
+**S-100 Edition 5.1.0, Part 10a — ISO/IEC 8211 Encoding** (October 2023)
+from IHO's public download — saved at
+[Reference/Data/Specifications/](../Specifications/README.md) — confirming
+the exact Leader/Directory/Field Area byte layout and the real S-100/S-101
+record field tags (`DSID`/`DSSI`/`CSID`/`CRSH`/`PRID`/`MRID`/`CRID`/`CCID`/
+`SRID`/`FRID`/`FOID`/`ATTR`/`INAS`/`SPAS`/`FASC`, the `NATC`/`ATIX`/`PAIX`
+attribute-tree encoding, and the `RUIN`/record-order update rules), which
+now grounds Slice 1 and most of Slice 2 in verified normative text instead
+of the test corpus's non-normative YAML/XML oracles alone. Two narrower
+gaps remain and are recorded as known, non-blocking scope: the S-101
+Feature Catalogue's code-to-meaning mapping (likely IHO GI Registry; free
+access unconfirmed) and the exchange-set-level dataset-lifecycle rules
+(base/update/reissue/cancellation identity) — both already degrade
+gracefully under this plan's existing diagnostics. Both gaps were then
+closed by the user's IHO document download (S-101 PS and FC 2.0.0), and the
+plan was revised after a full audit. Step 2 tests are written and fail for
+the right reason (production code is compile-only stubs). Gate: waiting for
+the user's approval of the tests, the proposed C17 wording change and the
+CI submodule change, then the explicit order to continue to Step 3 (code).
+
 [M1-E track fusion and queue ingress](features/m1-e-track-fusion.md)
 (requirements R1 to R40 with R16a) is done: all 6 slices accepted, PR #7
 merged into `dev` as `c01fd22` on 2026-11-01, with green cross-platform CI.
@@ -135,7 +177,257 @@ is plan-approved (2026-10-27) but deferred by the user's explicit choice on
 
 ## Last changes made
 
-M1-I Step 3 (code): implemented all 12 requirements (I1 to I12) for real
+M1-C Step 3 gate: the user approved the D5-D7 test corrections, the C30/C37
+count corrections (27 UKHO cells; one truncated InitialPowerUp reference and
+one UKHO typo reference, both reported, never resolved) and the managed
+store in place of SQLite. Applied and rerun; results in the feature file.
+Nothing committed.
+
+Earlier in the same session, M1-C Step 3 finished: the user approved the `DS-NEWEDITION` correction and
+asked that further test defects be held for the gate. Implemented the chart
+library (`Store/`). It has a managed store of content-addressed files and an
+atomically replaced manifest, immutable snapshots, a neighbourhood-pinned
+LRU cache, ECDSA signature checks, coverage adjacency, and an import that
+runs on a worker thread and can be cancelled, with support files. 171 of 174
+CoreCharts tests pass. The 3 failures are held test defects, where the
+real data differs from what the tests assumed:
+- D5: support references are on information types, and one is truncated in
+  the released data.
+- D6: UKHO has 27 cells, not 29.
+- D7: a UKHO cell names a support file with a digit missing.
+The rest of the full solution is green. C30 baseline recorded. Nothing
+committed.
+
+Earlier in the same session, M1-C Step 3 continued after the user approved the corrected oracle tests:
+implemented `S101UpdateApplier` (lineage rules, Part 10a record order,
+attribute/association/spatial-list and positional edits), an S-101 Annex B
+fallback for fields a file uses without defining (`ddr-definition-missing`
+warning) and brace-delimited format controls in the ISO 8211 reader. 131 of
+132 non-library CoreCharts tests pass, including all 70 s100tds cases; the
+one failure is a test defect (`DS-NEWEDITION` is edition 3 in its bytes),
+awaiting approval. Chart library not started. Nothing committed.
+
+Earlier in the same session: the user approved the M1-C Step 2 tests, the C17 wording change and the CI
+change, and said to continue. Applied the C17 wording; added a
+`git submodule update --init --depth 1` step for the three test-data
+submodules to the Windows and Linux jobs in `build-test-package.yml`
+(`core.longpaths` on Windows). Started Step 3: implemented
+`Iso8211Reader` (12/12 tests pass), `ExchangeSetReader` (17/17, C5 waits
+for the library) and `S101DatasetDecoder` + internal `S101Fields` (17/20).
+The 3 failures are a test defect: the tests assumed YAML sidecar record
+names equal encoded RCNM+RCID, which the raw bytes disprove (e.g. YAML
+`P11511` is record 115/1). Per the workflow, paused Step 3 and returned to
+the Step 2 gate with proposed corrections (match oracle entries by
+coordinates; drop the geometry-name check that C15 never required).
+Also found: the host forbids native libraries in modules, so the store
+will be managed (blobs + atomic manifest) instead of the assumed SQLite;
+recorded for the Step 3 gate. Update applier and chart library not started.
+Nothing committed.
+
+Earlier in the same session: M1-C Step 2 (tests), after the user approved the C27 amendment: wrote the
+compile-only production surface (`System/Shared/Contracts/Charts.cs`; in
+`System/Core/CoreCharts`: `Iso8211/`, `ExchangeSets/`, `S101/`, `Lineage/`,
+`Store/`, `ChartDiagnosticCodes.cs`; `module.json` 0.1.0 with the
+`charts.library` point; `ChartsModule.Features`), and the tests in
+`Tests/Core/CoreCharts.Tests` (`Iso8211ReaderTests`, `ExchangeSetReaderTests`,
+`S101DatasetDecoderTests`, `S101UpdateApplierTests`, `ChartLibraryTests`,
+`ChartsRuntimeTests`, `ReaderBoundaryTests`, `ChartBaselineTests`, plus
+helpers `Fixtures`, `TestSupport`, `YamlOracle`); the test project now
+references `Core`. Expected values were derived independently from the
+data before writing tests (neighbour sets from catalogue polygons with
+shapely, support-file references, feature types in the s100tds base, which
+1.1.0 files carry INAS). `dotnet build Poseidon.slnx`: no warnings or
+errors. `dotnet test Tests/Core/CoreCharts.Tests`: 174 tests, 165 failed
+(all `NotImplementedException`, checked per test from the TRX), 9 passed
+(8 pre-existing + the C27 no-Charts guard). `dotnet test Poseidon.slnx
+-maxCpuCount:1`: every other project passes; only CoreCharts' 165 expected
+failures, which the Civilian aggregate propagates as `MSB4181`. Ledger and
+gate points are in the feature file. Nothing committed.
+
+Earlier in the same session: the user approved the M1-C plan and ordered Step 2 (tests). Before writing
+any test, read the workflow's Step 2 rules and the existing module/test
+conventions (`IModule.Features`, `ModuleDeclarationTests`, the runtime's
+`ModuleGraph`). Found that the runtime rejects any feature not
+implementing a host-shared Contracts interface, so C27 could not be met
+under the plan's "all new types inside CoreCharts" rule. Per the workflow
+(a plan gap found while writing tests goes back to Step 1), amended the
+plan's Design (a minimal host-shared `IChartLibrary` in
+`System/Shared/Contracts/Charts.cs`; decoding/store internals stay in
+CoreCharts) and reworded C27, and returned to the Step 1 gate. No tests
+or production code written. Nothing committed.
+
+Earlier in the same session: the user accepted Q10: added C37 (S-101 support files imported with their
+datasets, signature-checked, stored with the snapshot, and resolved from
+features' `fileReference`/`pictorialRepresentation`; missing files reported).
+Confirmed committed data covers it for CI (the released 2.0.0
+`InitialPowerUp` set has 5 support files referenced by cell `X0000`). All
+M1-C open questions are answered; the plan is back at the Step 1 gate with
+37 requirements. Nothing committed; no tests or code.
+
+Earlier in the same session: before committing the plan, the user asked to explore the new UKHO data.
+Extracted the S-102/S-104/S-111/S-124 zips in place (about 1.3 GB, all
+git-ignored). Findings: every exchange set uses catalogue schema 5.2;
+UKHO's S-104/S-111 sets also carry an S-128 dataset (mixed products);
+SHOM's S-104/S-111 have placeholder signature text and no `CATALOG.SIGN`;
+all other signatures verify (ECDSA/SHA-384). Inspected the HDF5 products
+with `h5py` in a scratchpad virtualenv (Part 10c grids and time series,
+with UKHO/SHOM attribute and field-name variants) and the S-124/S-128 GML.
+For S-101: UKHO's set has 127 signed support files that 27 of 29 cells
+reference via `fileReference`; SHOM's spreadsheet lists per-update changes
+(usable as an oracle) but its feature counts are not exact (5,056 records
+vs 5,027). Recorded in M1-C: C1 (other products listed as unsupported),
+C36 (undecodable signature = unsigned), a corrected support-file count, and
+new Q10 (support files in scope?). Recorded the non-S-101 product findings
+and a new cross-cutting decision row (who reads S-102/104/111/124/128, and
+how HDF5 is read) in the master plan. Nothing committed; no tests or code.
+
+Earlier in the same session: the user added real hydrographic-office S-101 data at
+`Reference/Data/S-101/S-101/`: `S-101_GB_Apr26.zip` (UKHO, 29 cells, one
+update, 254 support files) and `S-101_FR_June26.zip` (SHOM, four exchange
+sets incl. cell `101FR00369400` across editions 1 and 2). Extracted both
+(and their nested zips) in place, keeping the zips. All 35 files are S-101
+2.0 / Part 10a 5.2, structurally clean, with matching `DSSI` counts and
+mandated coordinate factors; all 36 signatures verify (ECDSA/SHA-384, IHO
+5.2.0 root SA). New variants recorded in M1-C: base `DSED` as `"N.0"`,
+UKHO's `S100_SE_DigitalSignature` element, SHOM's per-cell subfolders.
+Wired the data into M1-C's fixture table and C16, C18, C19, C30, C36. The
+user confirmed it came from UKHO and must never be committed: added
+root-anchored entries for `Reference/Data/S-101`, `S-102`, `S-104`,
+`S-111` and `S-124` (all UKHO downloads, about 690 MB, none previously
+tracked) to the root `.gitignore`, verified with `git check-ignore`, and
+recorded in M1-C that tests using this data skip when it is absent while
+committed data still covers every requirement (C30's primary baseline
+moved back to the committed `PowerUp` set). Nothing committed; no tests or
+code.
+
+Earlier in the same session: the user accepted Q9: added `github.com/kusala9/s100tds` as submodule
+`Reference/Data/s100tds` (pinned at `4c2cade`) and recorded it in M1-C's
+fixture table (update-mechanics cases, read through a test-only override
+applying the 2.0.0 rules to its 2.1.0 label; its 2.10.0 cases are not
+used). All M1-C open questions (Q1-Q9) are now answered; the plan is back at
+the Step 1 gate. Asking the `s100tds` author for a licence and a 2.0.0
+build, and the S-164 sub-group about 2.0.0 lifecycle sets, is the user's to
+do. Nothing committed; no tests or code.
+
+Earlier in the same session: the user accepted the recommendations for M1-C's Q6 (decode S-101 2.0.0
+fully, accept 1.x at the record level) and Q7 (signature integrity against
+the catalogue's own certificate, no trust chain), recorded in the plan with
+a new requirement C36. The user then asked to look for real S-101 2.0.0
+test data. Searched the S-164 sub-group's staging area (same `X01SW`
+lineage with all five invalid-sequence files, plus 46 more 2.0.0 base
+cells) and its GitHub `v2.0.0` release (2026-10-16; same 39 sets as the
+repo, more promised), the IHO GI Registry (no 2.0.0 test dataset), UKHO
+(free trial data behind the ADMIRALTY portal licence, edition unstated) and
+CHS (sold through PRIMAR). No 2.0.0 re-issue, cancellation or corrupt
+update exists anywhere. Found the unofficial, unlicensed
+`github.com/kusala9/s100tds` (created 2026-10-26): about 80 update classes
+covering every Annex B-6 update mechanism; cloned it to the scratchpad and
+parsed all 444 files cleanly; its files are labelled S-101 2.1.0 (at IHO
+call for approval, draft FC) but every code they use exists in FC 2.0.0.
+Raised Q9 on whether and how to use it. Nothing committed; no submodule
+added; no tests or code.
+
+Earlier in the same session: the user added `Reference/Data/distribution_20240521/`, the S-100 schema
+server's 2024-05-21 archive (5.0.0/5.1.0/5.2.0 schemas plus mirrored ISO
+TC 211 and OGC schemas), answering M1-C's Q8. Inventoried it (it covers all
+three exchange-catalogue namespaces the data uses; no sample catalogues)
+and validated every exchange catalogue in the corpora plus the S-101
+Feature Catalogue 2.0.0 fully offline, using a throwaway .NET 10
+file-based validator in the session scratchpad with a resolver mapping the
+schema hosts and W3C URLs onto the archive. FC 2.0.0 is valid; 80 of 118
+catalogues are not, including every catalogue in M1-C's fixtures, which
+confirms the plan's tolerant-catalogue decision (finding 3). Recorded
+provenance and results in the Specifications README, marked Q8 answered in
+the M1-C plan, and pointed the master plan at the archive. Q6-Q7 remain
+open. Nothing committed; no tests or code.
+
+Earlier in the same session: audited all the documentation and submodules against
+[M1-C's plan](features/m1-c-chart-data-pipeline.md) to see whether
+everything needed to implement it is present. Read the S-101 2.0.0 Product
+Specification (including normative Annex B), the relevant parts of S-100
+5.2.1 (10a, 15, 17), the S-164 Ed 1.0.0 manual's loading/update tests, and
+the S-101 2.0.0 Feature Catalogue; surveyed every submodule; and parsed
+every S-101 file in the corpora (about 600) with throwaway Python ISO 8211
+tools kept in the session scratchpad, not the repo. Verdict: the normative
+material is complete (both earlier gaps closed); missing are 2.0.0
+re-issue/cancellation/corrupt-update fixtures (none exist anywhere) and the
+S-100 XML schemas (public at `schemas.s100dev.net`, not in the repo). Key
+findings now in the plan's Design section: the reader must be DDR-driven
+because 1.x and 2.0.0 encode repeating groups and text differently; the
+catalogue is unreliable (the released 2.0.0 updates are all labelled
+`newDataset`), so the file's `DSID` is authoritative (new C35); adjacency
+must be computed from coverage polygons (C32); `DSSI` counts are wrong in
+about half the files; the old "corrupt" fixtures are not corrupt (byte-
+identical files, valid signatures), so C18/C21 were re-pointed; signatures
+verify offline (ECDSA/SHA-384) against the catalogue's embedded
+certificate. Moved the fixture set to the released S-101 2.0.0 S-164 Part 2
+exchange sets (`S-164-Sub-Group`), rewrote C1, C6, C16-C21, C30, C32, added
+C34-C35, and raised Q6 (supported editions), Q7 (signature integrity in
+scope?) and Q8 (pin the XML schemas?). Updated the master plan and the
+Specifications README (its Part 10a 5.1.0 copy is superseded by S-100
+5.2.1). Nothing committed; no tests or code.
+
+Earlier in the same session: the user added a bulk download of official IHO documents at
+`Reference/Data/S-100 Documentation/` (specs, feature/portrayal catalogues,
+S-158 validation-check documents, S-130 sample data) and asked for its zip
+files extracted. Extracted every zip (including portrayal-catalogue zips
+nested inside the signature-wrapper zips) into a same-named sibling folder;
+left the original zips in place rather than deleting them (deleting
+project files is outside auto-mode's allowed actions). The user then asked
+to add a number of the `iho-ohi` GitHub org's repositories as submodules
+under `Reference/Data`, the same pattern already used for
+`S-101-Test-Datasets`. Peeked at several candidates' top-level contents to
+tell real data/code repos from empty or working-group discussion repos,
+then confirmed a shortlist with the user (plus one they added,
+`S-100-Standard-Development`) before adding anything; the user then named
+8 more by exact URL directly. Added 13 new submodules in total:
+`S-100-Standard-Development`, `S-100-xmlbindings`, `S-101-Validation`,
+`S-100-Validation-Checks`, `S-101_Portrayal-Catalogue`, `S-164-Sub-Group`,
+`NIWCSoftwareTestbed`, `S100Infrastructure`, `S100Resources`, `S-100UML`,
+`S-100WG`, `ENCWG`, `S100-Security-Scheme-PT`. One
+(`S-101-Validation`) has two upstream folder names containing a literal
+`:` (`Published versions/S-158:101 edition 1.0.0` and `.../1.1.0`), which
+Windows/NTFS cannot check out; `core.protectNTFS=false` is a blocked
+auto-mode action, so instead materialized every other tracked file
+directly from the `main` tree via `git show` and built a matching partial
+index, leaving just those two folders absent (their content duplicates the
+official S-158-101 docs already under `S-100 Documentation/`). `git status`
+inside that one submodule will always show those 5 files as deleted; this
+is a known, accepted gap, not an error to fix. Nothing committed.
+
+Closed out all 5 open questions on
+[M1-C: Chart-data pipeline](features/m1-c-chart-data-pipeline.md)'s Step 1
+plan. The user's answers: Q1 ISO 8211 in-house (confirmed the assumption);
+Q2 only test data was available, which Q4 then superseded; Q3 an embedded
+database with a cache kept warm for the currently-displayed cell plus its
+adjacent cells, not the in-memory-only default — added requirements
+C31-C33 and rewrote the chart-store Design section and a non-goals bullet
+accordingly; Q5 CRS scope confirmed. Q4 asked to build against the real
+S-100 specification, not just the test-corpus shape: used a `fork` to
+confirm IHO publishes S-100/S-101 publicly (search only, no page-fetching
+tool available to it), then a `web-fetch` agent to pull the S-100 Part 10a
+PDF, which returned raw undecoded bytes; extracted the real text myself
+with `pdftotext -layout` (available at `/mingw64/bin/pdftotext`) and read
+all 44 pages directly. Saved the PDF and extracted text at
+[Reference/Data/Specifications/](../Specifications/README.md) with a
+README recording provenance, edition, and what the document does and does
+not cover, so a future session does not have to re-research this. Folded
+the verified field tags, record structure, and update mechanism into the
+plan's Design section, replacing the old "specification gate" uncertainty;
+flagged the two narrower remaining gaps (Feature Catalogue code meanings;
+exchange-set-level lifecycle rules) as known non-blocking scope. Updated
+the master plan's M1-C rows and this file. Nothing committed; no tests or
+code started. Presented in conversation, waiting for the user's explicit
+order to continue to Step 2 (tests).
+
+Earlier in the same session: drafted the initial Step 1 plan for M1-C
+(before the open questions above were answered): audited the
+`S-101-Test-Datasets` submodule directly (fixture sizes, the S-164
+scenario-folder names) rather than relying only on the existing
+Feature-Mappings documents, and wrote the original 30 requirements
+(C1-C30) across 5 slices.
+
+Earlier in the same session: M1-I Step 3 (code): implemented all 12 requirements (I1 to I12) for real
 on branch `feature/core-track-system`, not committed yet.
 `LoggingConfiguration.ResolveMinimumLevel` checks `POSEIDON_LOG_LEVEL`
 first, then `logging.json` (read from `AppContext.BaseDirectory`), then
@@ -335,15 +627,14 @@ Earlier (before this session; slice 1, now merged):
 2. **Get the user's acceptance of [M1-I's code](features/m1-i-module-logging.md)**
    to close out the milestone; the full passing run is recorded and
    waiting for review. Nothing is committed yet.
+3. **Get the user's acceptance of [M1-C's code](features/m1-c-chart-data-pipeline.md)**
+   to close out the milestone. The Step 3 gate items (held test defects
+   D5-D7, count corrections, managed store) are approved and applied.
+   Nothing is committed yet.
 
 Everything else waiting, unblocked by anything above and not in
 competition with it, per the master plan's milestone table:
 
-3. **M1-C: Chart-data pipeline.** Not started, no plan approved. Needs
-   M1-A only (done), so it can be planned now. Audit S-101/S-158/S-164
-   specifications and pin fixture versions; Charts decodes a real base
-   cell; verify metadata, attributes, topology and malformed-input
-   diagnostics.
 4. **M1-D: Integrated chart view.** Not started; needs M1-B (done) and
    M1-C (not started), so it waits on M1-C. Display draws Charts data;
    pan/zoom, locked base, overlays, contour slider, feature inspection;
@@ -362,6 +653,7 @@ competition with it, per the master plan's milestone table:
    distance, declared peak report rates and the other starting values in
    section 21.4 — explicitly deferred, not a blocker on anything above.
 
-M1-C and M1-F have no plan yet and no dependency on each other, so either
-can be planned next; M1-D and M1-G both wait on earlier work (M1-G also now
-waits on M1-H).
+M1-C now has a revised plan awaiting the order to continue (above); M1-F has no plan yet
+and no dependency on M1-C, so it can be planned next whenever the user wants
+a fourth feature in flight. M1-D and M1-G both wait on earlier work (M1-G
+also now waits on M1-H).
