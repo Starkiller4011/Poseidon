@@ -1,6 +1,6 @@
 # Resume context
 
-Updated: 2026-10-28 (slice 3 coded)
+Updated: 2026-11-01 (M1-E fusion rework accepted and merged, PR #7/`c01fd22`; sensor-simulators deferred; M1-H code done and passing, awaiting acceptance; M1-I code done and passing, awaiting acceptance)
 
 Read this at the start of every session, then
 [development-workflow.md](development-workflow.md), then
@@ -63,41 +63,211 @@ The state of the feature being worked on, so a session that ends mid-feature can
 be picked up exactly where it stopped. Update it at every step change and
 whenever progress within a step changes. When no feature is in progress, say so.
 
-Feature: [M1-E track fusion and queue ingress](features/m1-e-track-fusion.md)
-(requirements R1 to R37 with R16a, slices in section 21.5). Each slice goes
-through tests then code with a gate after each.
+Feature: [M1-H: CoreUI extensibility, layout and input devices](features/m1-h-ui-extensibility.md)
+(its own milestone now, depending on M1-B; requirements H1 to H23). The
+chart region (hosting Display's viewport, unchanged from B5-B9) and a new
+always-visible side-panel area (`coreui.sidepanel`, e.g. track information)
+sit next to a separate paged control-pages area (`coreui.page`/
+`coreui.panel`, sensor/navigation controls), hosted per a startup
+hardware-configuration file: one window (chart+sidebar+pages) in `Single`
+mode, two windows (chart+sidebar; pages) in `Dual` mode. Keyboard shortcuts
+are a new `IModuleHost` (Core-level, not CoreUI-owned) mechanism:
+`RegisterShortcut`/`SetActiveShortcutScope`/`DispatchShortcut`. CoreUI also
+owns a separate TID touch window for buttonology (plain resizable window
+for now; fullscreen on real hardware is a later follow-up). Diagnostics/
+reload/exit are removed from CoreUI's shell entirely, deferred to a future,
+unplanned configuration-editing tool that will also own the
+hardware-configuration file.
 
 | Step | State | Detail |
 |---|---|---|
-| 1. Plan | Done, approved by the user on 2026-10-26 | Includes the bearing amendment (21.12) and the sequencing change (21.5) |
-| 2. Tests | Slices 1 to 3 done and approved | Next: slice 4 (ingress) |
-| 3. Code | Slices 1 to 3 merged/accepted | Remaining: slices 4 to 6; the contracts draft in `features/m1-e-track-fusion-contracts-draft.md` is a starting point for slice 4 |
+| 1. Plan | Done, approved by the user on 2026-11-01 | Two rounds of feedback (chart-must-always-be-visible plus single-/dual-display hardware configs, then answers to all 5 open questions); filed as its own milestone (M1-H) rather than an M1-B continuation |
+| 2. Tests | Done, approved by the user on 2026-11-01 | H1 to H23 all covered (55 CoreUI.Tests + 7 Core.Tests cases after 3 `FormatPackage`-related cases were deleted as dead code); every new test confirmed failing for the right reason |
+| 3. Code | Done, presented for the gate | All 23 requirements implemented; `dotnet test Poseidon.slnx -maxCpuCount:1` green with zero failures, 2026-11-01 |
 
-Progress: slice 3 (manager) is done and accepted. Gate: waiting for the order
-to start slice 4 (ingress) Step 2 (tests).
+Progress: `ConsoleHardwareConfiguration.Load`, `ModuleRuntime`'s shortcut
+registry, and a full `CoreUiModule` rewrite (hardware-mode-driven layout,
+side panels, control pages, TID, keyboard forwarding) are all implemented
+for real. One real bug found and fixed (a `StackPanel` holding a released
+panel's view never had its own `Children` cleared, so the view's `Parent`
+never became null — `RenderControlPagesContentAsync` in `CoreUiModule.cs`).
+Three existing tests needed mechanical updates for legitimate behavior
+changes (a race in two `ShellLayoutIntegrationTests` cases, a missing
+`console.json` and a stale "exactly one window" assumption in two
+`ShellViewportIntegrationTests` cases now that CoreUI also opens a TID
+window). Full detail, including the three tests revised for H12's removed
+diagnostics panel, is in the feature file's Step 3 ledger entry, not
+repeated here. Gate: waiting for the user's acceptance to close out M1-H.
 
 A second feature is now also in flight, by the user's explicit choice to
-interleave them: [sensor simulators and ComputerGeneratedForce](features/sensor-simulators.md)
-(a `Simulators/` solution folder of standalone sensor-simulator processes, a
-`ComputerGeneratedForce` world server, and a new wire-protocol listener in
-`CoreAIS`/`CoreRadar`/`CoreSonar`).
+interleave them (M1-H's own acceptance is still outstanding, see above):
+[M1-I: module logging](features/m1-i-module-logging.md), a shared `ILog`
+facility for every module and the host, with a `logging.json` config flag
+for debug-level logging, a `POSEIDON_LOG_LEVEL` environment-variable
+override, and two Visual Studio run profiles (Normal/Debug) to flip it
+without editing the file.
 
 | Step | State | Detail |
 |---|---|---|
-| 1. Plan | Done, approved by the user on 2026-10-27 | Includes the `NdsSonarSim` civilian correction |
-| 2. Tests | Not started | May proceed alongside M1-E slices 3 to 6, on the user's order |
-| 3. Code | Not started | Waits until M1-E (slices 3 to 6) is done |
+| 1. Plan | Done, approved by the user on 2026-11-01 | Custom `ILog` (cross-platform compatibility), console+file output, `logging.json`, plus the user's follow-on ask for VS run-profile switching (answered with `POSEIDON_LOG_LEVEL` + `launchSettings.json`) |
+| 2. Tests | Done, approved by the user on 2026-11-01 | I1 to I12 all covered (18 new Core.Tests cases; I9 by regression guard, I12 by manual verification) |
+| 3. Code | Done, presented for the gate | All 12 requirements implemented; `dotnet test Poseidon.slnx -maxCpuCount:1` fully green (every project "Test Run Successful"), 2026-11-01 |
 
-Progress: plan approved. Gate: waiting for the order to start Step 2 (tests)
-for either feature (M1-E slice 3, or sensor-simulators, or both).
+Progress: `LoggingConfiguration.ResolveMinimumLevel`, `LogSink.Write`,
+`ModuleRuntime.GetLog`, `Report` (now `GetLog("Core").Warning(...)`
+instead of direct `Console.Error`) and `App.axaml.cs`'s two failure paths
+are all implemented for real; `System/Core/Core/Properties/launchSettings.json`
+adds the "Poseidon"/"Poseidon (Debug logging)" run profiles. One
+deliberate, in-scope behavior note: `Report`'s diagnostics now go to
+`Console.Out` via the shared sink instead of `Console.Error`, since the
+facility writes every level to the same stream by design — not an
+accidental regression. Full detail, including the requirement-to-test
+ledger, is in the feature file's Step 3 entry, not repeated here. Gate:
+waiting for the user's acceptance to close out M1-I.
+
+[M1-E track fusion and queue ingress](features/m1-e-track-fusion.md)
+(requirements R1 to R40 with R16a) is done: all 6 slices accepted, PR #7
+merged into `dev` as `c01fd22` on 2026-11-01, with green cross-platform CI.
+
+[Sensor simulators and ComputerGeneratedForce](features/sensor-simulators.md)
+is plan-approved (2026-10-27) but deferred by the user's explicit choice on
+2026-11-01: paused with no tests or code started, to be picked up later.
 
 ## Last changes made
 
-Feature and step: M1-E fusion rework, slice 3 accepted (Step 3 code already
-done), on branch `feature/core-track-system`.
+M1-I Step 3 (code): implemented all 12 requirements (I1 to I12) for real
+on branch `feature/core-track-system`, not committed yet.
+`LoggingConfiguration.ResolveMinimumLevel` checks `POSEIDON_LOG_LEVEL`
+first, then `logging.json` (read from `AppContext.BaseDirectory`), then
+falls back to `Information`; `LogSink.Write` filters by level, formats
+timestamp/category/level/message(+exception), writes to console then a
+file, and swallows file-write failures. `ModuleRuntime` builds one shared
+`LogSink` at construction (log file at `logDirectory/poseidon-<date>.log`,
+`logDirectory` defaulting to a `logs` folder next to the host executable)
+and implements `GetLog` for real; `Report` now calls
+`GetLog("Core").Warning(...)` instead of `Console.Error.WriteLine`
+directly, and `App.axaml.cs`'s two failure paths now call
+`GetLog("Core").Error(...)` the same way (verified by reading the diff;
+no test harness exists for the `App` class). New
+`System/Core/Core/Properties/launchSettings.json` with "Poseidon" and
+"Poseidon (Debug logging)" profiles. `dotnet build Poseidon.slnx` and
+`dotnet build Core.Application.proj`: no warnings or errors. All 18 new
+`Core.Tests` cases now pass; the full `Core.Tests` project is 141/141;
+`dotnet test Poseidon.slnx -maxCpuCount:1`: every project in the solution
+reports "Test Run Successful", zero failures anywhere.
 
-- The user accepted slice 3, including the test and production fixes, on
-  2026-10-28.
+Earlier in the same session: M1-I Step 2 (tests): wrote and ran the tests for all 12 requirements
+(I1 to I12) on branch `feature/core-track-system`, confirmed failing for
+the right reason, not committed yet. New files: `LoggingConfigurationTests.cs`,
+`LogSinkTests.cs`, `ModuleLoggingTests.cs` (18 cases total) in `Core.Tests`.
+Production stubs added: `Poseidon.Contracts`' `ILog`/`LogLevel`/`LogExtensions`
+(real, no behavior to stub) and `IModuleHost.GetLog` (throws by default,
+same pattern as M1-H's shortcut members); `Poseidon.Core.Runtime.Logging`'s
+`LoggingConfiguration.ResolveMinimumLevel` and `LogSink.Write` (throw);
+`ModuleRuntime` gained an unused `logDirectory` constructor parameter for
+Step 3 to wire up. The shared `FixtureModule`/`RuntimeTest` test fixture
+(used by other `Core.Tests` cases too) gained an additive
+`UseLogDuringStartAndStop` flag and `LogDirectory`, confirmed not to break
+anything else. `dotnet build Poseidon.slnx`: no warnings or errors.
+`dotnet test Poseidon.slnx -maxCpuCount:1`: `Core.Tests` is the only
+project with failures (123 pre-existing pass, 18 new fail as expected);
+every other project is green.
+
+Earlier in the same session: updated the `feedback_commit_message_after_dev_steps`
+memory — the user corrected it (2026-11-01) to stop asking to commit or
+offering a commit action at all, not just to surface the message
+unprompted; he handles all git operations himself. Then drafted and finalized the Step 1 plan for
+[M1-I: module logging](features/m1-i-module-logging.md) (a shared `ILog`
+facility, `IModuleHost.GetLog`, console+file output, a `logging.json`
+debug-level flag). The user confirmed all 3 open questions (custom `ILog`,
+both console and file output, `logging.json`) and added one more ask: two
+Visual Studio run targets to switch between normal and debug logging —
+resolved with a `POSEIDON_LOG_LEVEL` environment-variable override (wins
+over `logging.json` when set) plus a new
+`System/Core/Core/Properties/launchSettings.json` with "Poseidon" and
+"Poseidon (Debug logging)" profiles.
+
+Earlier in the same session: M1-H Step 3 (code): implemented all 23 requirements (H1 to H23) for real
+on branch `feature/core-track-system`, not committed yet.
+`ConsoleHardwareConfiguration.Load` parses `console.json` for real (same
+shape as `RadarHardwareConfiguration`); `ModuleRuntime` gained a real
+shortcut registry backing the three `IModuleHost` members added in Step 2;
+`CoreUiModule` was rewritten in full — hardware-mode-driven window layout
+(chart+side-panels window, plus a control-pages window in `Dual` mode, plus
+the TID window), the control-pages region (page switcher, duplicate/orphan
+diagnostics, release discipline), and keyboard forwarding. One real bug
+found and fixed while making a test pass: a `StackPanel` wrapping a
+released control-page panel's view was detached from the window but never
+had its own `Children` cleared, so the view's `Parent` stayed pointing at
+the orphaned `StackPanel` instead of becoming null — fixed in
+`RenderControlPagesContentAsync`. Three existing tests needed mechanical
+updates for legitimate new behavior (not pre-existing bugs): a race in two
+`ShellLayoutIntegrationTests` cases (window count could satisfy a check
+before the first refresh tick populated viewport text); two
+`ShellViewportIntegrationTests` cases needed a `console.json` written for
+the real CoreUI package they deploy (CoreUI now requires one to start) and
+needed to stop assuming "exactly one visible window" now that CoreUI also
+opens the TID window. `dotnet build Poseidon.slnx` and
+`dotnet build Core.Application.proj`: no warnings or errors.
+`dotnet test Poseidon.slnx -maxCpuCount:1`: every project "Test Run
+Successful", zero failures, including `CoreUI.Tests` (55/55), `Core.Tests`
+(123/123) and `Contracts.Tests` (94/94). Full detail, including the
+requirement-to-test ledger, is in the feature file's Step 3 entry, not
+repeated here.
+
+Earlier in the same session: M1-E fusion rework's PR (#7, `feature/core-track-system` into `dev`) was
+accepted by the user and merged 2026-11-01 as `c01fd22`. A Windows-only CI
+recurrence was fixed first and included in the merge: the "Collect civilian
+coverage" step in `build-test-package.yml` ran its own separate `dotnet
+test` invocation that never got the `-maxCpuCount:1` flag added during
+slice 6 close-out, reproducing the same cross-process contention and timing
+out `SourceDisconnect_IsVisibleInTheFeed_AndAnObservationRestoresIt` again;
+fixed by adding the flag there too (CI-script only, committed as `88d56c0`,
+documented in the feature file's slice 6 section). The user also chose to
+defer sensor-simulators rather than start its Step 2 (tests) now.
+
+Earlier in the same session: M1-E fusion rework, slice 5 (consumers and
+integration) accepted 2026-10-29, on branch `feature/core-track-system`.
+
+- The user accepted slice 5 on 2026-10-29 (tests approved the same day,
+  Step 3 code written and accepted the same day). Implemented
+  `TrackSourceConnector.Start`/`StopAsync` for real: a
+  background task (execution-context flow suppressed) retries
+  `ITrackPublisher.Register` every 200 ms until it succeeds, then holds the
+  sink; `StopAsync` cancels it and disposes the sink. A descriptor update
+  that lands in the registration race window is reconciled once the sink
+  is set, so a rotation-rate change is never silently lost. Implemented
+  `ChartViewport.BearingLines` for real: one line per Bearing-/Hybrid-kind
+  track, styled by that track's own state.
+- Found and fixed two bugs while making the tests pass: (1) `AisModule`/
+  `RadarModule.Submit` incremented their sequence counter before checking
+  the connector had actually registered, so a report rejected as
+  `Unavailable` in the registration window still permanently burned a
+  sequence number — fixed by checking `Sink is null` first; (2) three
+  adapter tests asserted on the very first `Submit`/descriptor read
+  immediately after `StartAsync`, assuming registration had already
+  completed, which is a race now that it is a real background task — fixed
+  by polling past it (mechanical, same category as slice 4's `DrainOnce`
+  fixes), not by changing what they check.
+- `dotnet build Poseidon.slnx`: no warnings or errors. `dotnet test
+  Poseidon.slnx` run three times in a row: every project passes with zero
+  failures each time, including both aggregates (no MSB4181 recurrence) and
+  `CoreUI.Tests`' `ShellViewportIntegrationTests`. Full detail in the
+  feature file's "Slice 5 (consumers and integration)" Step 3 ledger entry.
+  Nothing is committed.
+
+Earlier in the same session: slice 5 Step 2 (tests) was written against the
+two stubs above and failed there, uncaught (16 tests); full detail is in
+the feature file's own Step 2 ledger entry, not repeated here.
+
+Earlier in the same session: slice 4 (ingress) accepted on 2026-10-28, on
+the explicit terms in its ledger entry's "not done in this pass" list,
+which slice 5 above now picks up as its first step; full detail is in the
+feature file's "Slice 4 (ingress)" Step 2 and Step 3 ledger entries, not
+repeated here.
+
+Earlier in the same session: slice 3 (manager) accepted on 2026-10-28.
+
 - Implemented `TrackManager` (correlation, contributions, per-contribution
   lifecycle, automatic split, operator merge/split, bearing association and
   kind changes, checkpoint schema 2) and added `Peek`/`Export`/`Restore` to
@@ -158,19 +328,40 @@ Earlier (before this session; slice 1, now merged):
 
 ## What needs to be done next
 
-1. **Slice 4 (ingress) Step 2 (tests)**, on the user's order: the publisher,
-   per-source queues and consumer thread, the operations feature exposed
-   through the module, manifests, adapters as publishers, radar rotation
-   rate, statistics, the throughput baseline (R22 to R26, R29 to R31, 21.5
-   item 4). The contracts draft in
-   `features/m1-e-track-fusion-contracts-draft.md` is a starting point.
-2. **Sensor-simulators Step 2 (tests)**, on the user's order, may proceed
-   alongside the above (plan approved 2026-10-27); its Step 3 (code) still
-   waits until M1-E (slices 3 to 6) is done.
-3. Slices 5 and 6 of M1-E (consumers, close-out) have not started; see 21.5.
-4. Tuning (later, when real data is available): the 200 m join and split
-   distance, the declared peak report rates and the other starting values in
-   section 21.4.
-5. M1-E as built is not accepted until the rework is done and CI passes on
-   Windows, Arch Linux and RHEL-compatible containers; the M1-C and M1-F
-   planning has not started.
+1. **Get the user's acceptance of [M1-H's code](features/m1-h-ui-extensibility.md)**
+   to close out the milestone; the full passing run and the bug found
+   along the way are recorded and waiting for review. Nothing is
+   committed yet.
+2. **Get the user's acceptance of [M1-I's code](features/m1-i-module-logging.md)**
+   to close out the milestone; the full passing run is recorded and
+   waiting for review. Nothing is committed yet.
+
+Everything else waiting, unblocked by anything above and not in
+competition with it, per the master plan's milestone table:
+
+3. **M1-C: Chart-data pipeline.** Not started, no plan approved. Needs
+   M1-A only (done), so it can be planned now. Audit S-101/S-158/S-164
+   specifications and pin fixture versions; Charts decodes a real base
+   cell; verify metadata, attributes, topology and malformed-input
+   diagnostics.
+4. **M1-D: Integrated chart view.** Not started; needs M1-B (done) and
+   M1-C (not started), so it waits on M1-C. Display draws Charts data;
+   pan/zoom, locked base, overlays, contour slider, feature inspection;
+   this is also where `ChartViewport.BearingLines` (M1-E's R37) finally
+   gets pixels on screen, a gap M1-E's close-out already flagged.
+5. **M1-F: Navigation functions.** Not started; needs M1-E (done, so this
+   is now unblocked). Own-ship state, tested CPA/TCPA, Display
+   annotations, explicit unavailable/stale/degenerate-motion behavior.
+6. **M1-G: Integration gate.** Not started; needs M1-D, M1-E, M1-F and
+   M1-H, so it waits on all four. Cross-platform publish and native
+   desktop smoke tests, actual civilian module suites, dependency/
+   override/hot-reload failure tests across the integrated application.
+7. **Sensor-simulators**, deferred — picks back up on the user's order
+   (plan already approved 2026-10-27; Step 2, tests, is what resumes).
+8. Tuning (later, when real data is available): M1-E's 200 m join/split
+   distance, declared peak report rates and the other starting values in
+   section 21.4 — explicitly deferred, not a blocker on anything above.
+
+M1-C and M1-F have no plan yet and no dependency on each other, so either
+can be planned next; M1-D and M1-G both wait on earlier work (M1-G also now
+waits on M1-H).

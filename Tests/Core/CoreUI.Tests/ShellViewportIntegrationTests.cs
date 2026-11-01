@@ -35,13 +35,15 @@ public sealed class ShellViewportIntegrationTests
         Assert.True(await modules.Runtime.ReloadAsync());
         Assert.All(modules.Runtime.Status.Packages, p => Assert.Equal(PackageState.Active, p.State));
 
-        var window = Assert.Single(opened, w => w.IsVisible);
+        // H17: CoreUI now also opens a TID window alongside the chart window, so "the one visible
+        // window" has to exclude it rather than assume there is only one.
+        var window = Assert.Single(opened, w => w.IsVisible && !w.Title!.Contains("TID"));
         await WaitUntil(() => Text(window).Contains("No chart data loaded"));
         Assert.DoesNotContain("Chart viewport unavailable", Text(window));
 
         modules.Remove("CoreDisplay");
         Assert.True(await modules.Runtime.ReloadAsync());
-        var replacement = Assert.Single(opened, w => w.IsVisible);
+        var replacement = Assert.Single(opened, w => w.IsVisible && !w.Title!.Contains("TID"));
         Assert.NotSame(window, replacement);
         await WaitUntil(() => Text(replacement).Contains("Chart viewport unavailable"));
         Assert.DoesNotContain("No chart data loaded", Text(replacement));
@@ -61,7 +63,9 @@ public sealed class ShellViewportIntegrationTests
         Assert.True(await modules.Runtime.ReloadAsync());
         Assert.All(modules.Runtime.Status.Packages, p => Assert.Equal(PackageState.Active, p.State));
 
-        var window = Assert.Single(opened, w => w.IsVisible);
+        // H17: CoreUI now also opens a TID window alongside the chart window, so "the one visible
+        // window" has to exclude it rather than assume there is only one.
+        var window = Assert.Single(opened, w => w.IsVisible && !w.Title!.Contains("TID"));
         await WaitUntil(() => Text(window).Contains("Tracks: 0"));
 
         var report = new AisPositionReport(366123456, DateTimeOffset.UtcNow, 25.25, 55.5, 10, 90, 91, "MV EXAMPLE");
@@ -72,7 +76,7 @@ public sealed class ShellViewportIntegrationTests
 
         modules.Remove("CoreTracks");
         Assert.False(await modules.Runtime.ReloadAsync());
-        var replacement = Assert.Single(opened, w => w.IsVisible);
+        var replacement = Assert.Single(opened, w => w.IsVisible && !w.Title!.Contains("TID"));
         await WaitUntil(() => Text(replacement).Contains("Tracks unavailable"));
     }
 
@@ -98,6 +102,10 @@ public sealed class ShellViewportIntegrationTests
             Directory.CreateDirectory(package);
             File.Copy(assembly, Path.Combine(package, name + ".dll"), overwrite: true);
             File.Copy(manifest, Path.Combine(package, "module.json"), overwrite: true);
+            // H1: CoreUI now requires its own console.json to start; these tests only care about the
+            // viewport boundary, so Single (the simplest layout) is an unremarkable default here.
+            if (name == "CoreUI")
+                File.WriteAllText(Path.Combine(package, "console.json"), """{ "displayMode": "Single" }""");
             File.WriteAllText(Path.Combine(package, ".ready"), "complete");
         }
 

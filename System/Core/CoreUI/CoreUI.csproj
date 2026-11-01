@@ -9,4 +9,11 @@
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.7" />
   </ItemGroup>
+
+  <!-- Dev-only default (H1 never guesses one for a real deployment): Debug builds stage this as
+       console.json so a plain `dotnet run` has a console to start against. A real deployment's
+       build/publish is Release and must supply its own console.json for the physical console. -->
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <None Include="console.dev.json" Link="console.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

@@ -45,7 +45,11 @@ dotnet build Core.Application.proj \
   --configuration Release \
   --no-restore
 test_results_directory="artifacts/test-results/${distribution}"
+# -maxCpuCount:1: without it, MSBuild runs every test project's VSTest target concurrently, and on a
+# CPU-constrained CI container that starves the real background tasks/timers some integration tests
+# (CoreTracks.Tests' TrackPipelineIntegrationTests) depend on, causing intermittent timeouts.
 dotnet test Poseidon.slnx \
+  -maxCpuCount:1 \
   --configuration Release \
   --no-restore \
   --logger "trx;LogFilePrefix=${distribution}" \

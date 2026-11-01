@@ -6,7 +6,8 @@ using Poseidon.Core.Modules;
 namespace Poseidon.Tests.Fixtures;
 
 public sealed record FixtureSettings(string Id, string Text, bool FailStart, bool FailStop, int StartDelayMilliseconds,
-    string FeatureId, string FeatureMode, bool FailCapture, bool FailRollback, bool InvokeOnStart, string? EventLog);
+    string FeatureId, string FeatureMode, bool FailCapture, bool FailRollback, bool InvokeOnStart, string? EventLog,
+    bool UseLogDuringStartAndStop);
 
 public sealed class FixtureModule : IModule, ITextFeature
 {
@@ -26,7 +27,8 @@ public sealed class FixtureModule : IModule, ITextFeature
             root.TryGetProperty("FailCapture", out var capture) && capture.GetBoolean(),
             root.TryGetProperty("FailRollback", out var rollback) && rollback.GetBoolean(),
             root.TryGetProperty("InvokeOnStart", out var invoke) && invoke.GetBoolean(),
-            root.TryGetProperty("EventLog", out var log) ? log.GetString() : null);
+            root.TryGetProperty("EventLog", out var log) ? log.GetString() : null,
+            root.TryGetProperty("UseLogDuringStartAndStop", out var useLog) && useLog.GetBoolean());
     }
     public IReadOnlyList<ModuleCapability> Capabilities => [];
     public IReadOnlyDictionary<string, object> Features => new Dictionary<string, object>
@@ -44,6 +46,10 @@ public sealed class FixtureModule : IModule, ITextFeature
     {
         starts++;
         Log("start");
+        Host = host;
+        // M1-I (I1, I2): proves GetLog works from a lifecycle method, where InvokeAsync is rejected.
+        if (settings.UseLogDuringStartAndStop)
+            host.GetLog(settings.Id).Information("starting");
         if (settings.StartDelayMilliseconds > 0)
             await Task.Delay(settings.StartDelayMilliseconds, CancellationToken.None);
         if (settings.FailStart)
@@ -73,10 +79,16 @@ public sealed class FixtureModule : IModule, ITextFeature
     public ValueTask StopAsync(CancellationToken cancellationToken)
     {
         Log("stop");
+        if (settings.UseLogDuringStartAndStop)
+            Host?.GetLog(settings.Id).Information("stopping");
         if (settings.FailStop)
             throw new InvalidOperationException("Fixture stop failure");
         return ValueTask.CompletedTask;
     }
+
+    // StopAsync does not receive the host; StartAsync stashes it so StopAsync can also prove GetLog
+    // works there (I2), the same as it does in StartAsync.
+    internal IModuleHost? Host { get; private set; }
 
     private void Log(string operation)
     {

@@ -8,6 +8,7 @@ namespace Poseidon.Modules.Tracks;
 public sealed class TracksModule : IModule
 {
     private readonly TrackManager manager;
+    private readonly TrackIngress ingress;
     private readonly TimeProvider time;
     private readonly TimeSpan tickInterval;
     private ITimer? timer;
@@ -21,6 +22,7 @@ public sealed class TracksModule : IModule
         this.time = time;
         this.tickInterval = tickInterval;
         manager = new TrackManager(time, policy);
+        ingress = new TrackIngress(manager);
     }
 
     public IReadOnlyList<ModuleCapability> Capabilities =>
@@ -30,8 +32,9 @@ public sealed class TracksModule : IModule
 
     public IReadOnlyDictionary<string, object> Features => new Dictionary<string, object>
     {
-        [TrackPoints.IngestionFeatureId] = manager,
-        [TrackPoints.FeedFeatureId] = manager
+        [TrackPoints.FeedFeatureId] = manager,
+        [TrackPoints.PublisherFeatureId] = ingress,
+        [TrackPoints.OperationsFeatureId] = manager
     };
 
     public async ValueTask StartAsync(IModuleHost host, ModuleState? state, CancellationToken cancellationToken)
@@ -41,6 +44,7 @@ public sealed class TracksModule : IModule
         if (timer is not null)
             await timer.DisposeAsync();
         timer = time.CreateTimer(_ => manager.Advance(), null, tickInterval, tickInterval);
+        ingress.Start();
     }
 
     public ValueTask<ModuleState?> CaptureStateAsync(CancellationToken cancellationToken)
@@ -52,5 +56,6 @@ public sealed class TracksModule : IModule
         timer = null;
         if (stopping is not null)
             await stopping.DisposeAsync();
+        await ingress.StopAsync();
     }
 }

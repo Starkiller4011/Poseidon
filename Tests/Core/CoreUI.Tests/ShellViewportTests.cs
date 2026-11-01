@@ -12,8 +12,11 @@ public sealed class ShellViewportTests
     private const string Unavailable = "Chart viewport unavailable";
 
     [AvaloniaFact]
-    public async Task WithoutAViewportProvider_ShowsUnavailableStateAndKeepsDiagnosticsAndCommands()
+    public async Task WithoutAViewportProvider_ShowsUnavailableState()
     {
+        // H12 superseded this test's original name and its diagnostics/Rescan/Exit assertions: CoreUI's
+        // shell no longer shows that panel at all. The unavailable-viewport behavior itself (B6) is
+        // unchanged and still covered here.
         var host = new ViewportHost();
         var module = new CoreUiModule();
         try
@@ -21,16 +24,13 @@ public sealed class ShellViewportTests
             await module.StartAsync(host, null, CancellationToken.None);
             var window = Assert.IsType<Window>(module.ActiveWindow);
             await WaitUntil(() => Text(window).Contains(Unavailable));
-            Assert.Contains("example diagnostic", Text(window));
-            Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => Equals(b.Content, "Rescan / reload modules"));
-            Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => Equals(b.Content, "Exit"));
             Assert.Equal(0, host.ViewportRequests);
         }
         finally { await module.StopAsync(CancellationToken.None); }
     }
 
     [AvaloniaFact]
-    public async Task HostsTheEffectiveViewportNextToDiagnosticsAndRequestsItOnce()
+    public async Task HostsTheEffectiveViewportAndRequestsItOnce()
     {
         var host = new ViewportHost();
         var view = new TextBlock { Text = "vendor viewport view" };
@@ -41,7 +41,6 @@ public sealed class ShellViewportTests
             await module.StartAsync(host, null, CancellationToken.None);
             var window = Assert.IsType<Window>(module.ActiveWindow);
             await WaitUntil(() => window.GetVisualDescendants().Contains(view));
-            Assert.Contains("example diagnostic", Text(window));
             Assert.DoesNotContain(Unavailable, Text(window));
             await Task.Delay(1100);
             Assert.Equal(1, host.ViewportRequests);
@@ -76,7 +75,7 @@ public sealed class ShellViewportTests
     }
 
     [AvaloniaFact]
-    public async Task AFailingProviderIsReportedOnceWithoutRemovingDiagnostics()
+    public async Task AFailingProviderIsReportedOnce()
     {
         var host = new ViewportHost();
         host.Provide("broken.viewport", new FakeViewport(() => throw new InvalidOperationException("viewport exploded")));
@@ -87,7 +86,6 @@ public sealed class ShellViewportTests
             var window = Assert.IsType<Window>(module.ActiveWindow);
             await WaitUntil(() => Text(window).Contains("viewport exploded"));
             Assert.Contains(Unavailable, Text(window));
-            Assert.Contains("example diagnostic", Text(window));
             await Task.Delay(1100);
             Assert.Equal(1, host.ViewportRequests);
         }
@@ -122,10 +120,11 @@ public sealed class ShellViewportTests
             await Task.Delay(50, deadline.Token);
     }
 
-    private sealed class FakeViewport(Func<object> create) : IChartViewport
+    internal sealed class FakeViewport(Func<object> create) : IChartViewport
     {
         public object CreateView() => create();
         public IReadOnlyList<ViewportLayer> Layers => [];
+        public IReadOnlyList<BearingLine> BearingLines => [];
         public void SetLayerVisibility(string layerId, bool visible) => throw new NotSupportedException();
     }
 

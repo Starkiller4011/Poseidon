@@ -38,6 +38,8 @@ public interface IAisInput
 
 // A radar target as reported by the radar's own tracker (for example an ARPA target number). Without a pose
 // (and a heading, for a relative bearing) no geographic position can be derived, so the report is rejected.
+// ChannelId names the physical radar the report came from (21.13, R38 to R40); "default" is the one implicit
+// channel a module with no hardware configuration file uses, so existing single-radar callers are unaffected.
 public sealed record RadarTargetReport(
     int TargetNumber,
     DateTimeOffset MeasuredUtc,
@@ -47,10 +49,13 @@ public sealed record RadarTargetReport(
     SensorPose? Pose = null,
     double? SpeedOverGroundMetresPerSecond = null,
     double? CourseOverGroundDegrees = null,
-    double? PositionUncertaintyMetres = null);
+    double? PositionUncertaintyMetres = null,
+    string ChannelId = "default");
 
 public interface IRadarInput
 {
     SubmissionResult Submit(RadarTargetReport report);
     void ReportSourceHealth(SourceHealth health, string? detail = null);
+    // R25: the antenna rotation rate can change at run time; it is per channel (21.13, R40).
+    void SetAntennaRotationRate(string channelId, double revolutionsPerMinute);
 }

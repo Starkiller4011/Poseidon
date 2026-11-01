@@ -2,13 +2,19 @@
 
 Milestone: M1-E rework (prerequisite: the M1-E track pipeline as built)
 Status: **Plan approved by the user on 2026-10-26, including the amendment
-moving bearing tracks into CoreTracks (21.12, R16a and R33 to R37). Slices 1
-to 3 are accepted (slice 3 on 2026-10-28, including the test and production
-fixes in its ledger entry). Slices 4 to 6 have not started.** An earlier implementation attempt of
-the whole rework was reverted at the user's request. Apart from slices 1 and
-2, the code is still at the verified state described in
-[m1-e-track-pipeline.md](m1-e-track-pipeline.md) (single-source tracks,
-sensor-side relay).
+moving bearing tracks into CoreTracks (21.12, R16a and R33 to R37), and
+amended again on 2026-10-28 for multi-sensor-channel modules (21.13, D10).
+Slices 1 to 5 are accepted (slice 5 on 2026-10-29) and committed
+(`ee0e486`). Slice 6 (close-out) is done — full solution run, the
+consolidated requirement-to-test ledger and known limits, and the slice 5
+PR's cross-platform CI all green — and presented to the user for review and
+acceptance.** An earlier
+implementation attempt of the whole rework was reverted at the user's
+request. `CoreAIS` and `CoreRadar` are rewired onto `TrackSourceConnector`/
+`ITrackPublisher` (real registration, retried in the background until
+Tracks is available); `ObservationRelay` and `ITrackIngestion` (as described
+in [m1-e-track-pipeline.md](m1-e-track-pipeline.md)) are removed entirely,
+with no compatibility shim. Everything else reflects slices 1 to 4.
 
 This file holds the track system requirements confirmed on 2026-10-26 (former
 section 20) and the implementation plan for the fusion rework (former section
@@ -48,6 +54,7 @@ M1-E track pipeline file and the sensor-to-track proposal.
 | T8 | Stale, lost and removal timings are per source (radar needs far shorter than AIS), not one global policy. Each source module registers its expected update interval and timings when it registers with Tracks |
 | T9 | The 10,000 track cap stays until performance tuning shows a need |
 | T10 | Sensor feeds go directly into track management: each sensor publishes its reports to a queue that Tracks consumes, so several sensors can publish at the same time without blocking each other or the track manager. Most radars run their own tracker and report their own target numbers, which become source-local track IDs |
+| T11 | A module may own several physical sensors of the same kind (for example a ship with two navigation radars, or two echo sounders). Each physical sensor is its own source to `CoreTracks`, with its own descriptor, timings and track correlation identity; a module discovers its own sensor inventory from a ship-specific hardware configuration it reads at startup, not from `module.json` (module identity, version and contributions stay static and build-time, per the existing rule) |
 
 ### Effect on the M1-E implementation as built
 
@@ -69,6 +76,13 @@ M1-E track pipeline file and the sensor-to-track proposal.
   bag per track keyed by namespaced ID, contributed through a CmsTracks point.
 - The `Tracks` manifest and the feed contract stay the base that CmsTracks
   builds on.
+- **Multiple sensors of one kind** (T11): association already keyed by source
+  plus source-local ID must use a source ID per physical sensor, not per
+  module, or two physical radars that both hand out "target 7" would be
+  treated as updates to the same source-local track. A module that owns
+  several channels (CoreRadar's navigation radars today) registers one
+  descriptor per channel and routes each incoming report to the right one by
+  a channel identifier carried on the report. See 21.13.
 
 ### Questions asked (answered 2026-10-26; see the decisions below)
 
@@ -114,6 +128,7 @@ M1-E track pipeline file and the sensor-to-track proposal.
 | D7 | **Non-geodetic sources.** Unknown whether any civilian ones exist. This must be searched and verified before deciding whether the estimator belongs in Core or CMS only. Searched on 2026-10-26; the findings and the proposed answer are in 21.11 |
 | D8 | **Sequence.** Civilian side first. CmsTracks requirements are documented but not implemented until work on the CMS side starts, after the civilian side is complete |
 | D9 | **Bearing tracks in Core, estimator in CMS** (2026-10-26, after the search in 21.11). Bearing tracks move back into CoreTracks, because civilian search-and-rescue direction finders produce bearings. The estimator that ranges a target from bearings over time stays in CmsTracks. The amendment is in 21.12 |
+| D10 | **Multiple sensors per module** (2026-10-28). A module's hardware inventory (which physical sensors it owns, and each one's settings) comes from a ship-specific configuration the module reads at startup, delivered by the host without the host interpreting it, not from `module.json`. Each configured channel registers as its own source with Tracks. CoreRadar's navigation-radar channels are the concrete case for M1-E; CoreSonar gets the same mechanism for its own civilian channels but wiring them is not in scope here, since civilian `Core.Sonar` is not a track source (T2). The amendment is in 21.13 |
 
 ### Design (starting point)
 
@@ -207,6 +222,9 @@ touched.
 | R35 | A bearing contribution is supplemental. It refines the fused point only when every Active ranged contribution of the track is AIS, because AIS positions can be less accurate than a bearing. When radar or any other ranged source is Active, the bearing only updates the track's bearing, keeps its contribution alive and takes part in the split check. A bearing that falls outside the bearing gate for the split confirmation count splits off as a Bearing track (R7). Operator merge and split work with bearing contributions like any other |
 | R36 | Kind changes keep the track number. A Bearing track whose source track reports a range becomes a Point track. A track whose ranged contributions all stop (Lost, or its source track now reports a bearing only) while a bearing contribution is still Active becomes Hybrid: its point is the last ranged estimate extrapolated by `TrackMotion.Predict`, its uncertainty grows with time, and it is never refined by bearings. A Hybrid track becomes Point again when a ranged report arrives. `TrackMotion.Predict` returns nothing for a Bearing track |
 | R37 | Display draws a bearing line from the own-ship position on display along the track's true bearing to the edge of the viewport, for Bearing and Hybrid tracks, in the track's state style. The own-ship position comes from Navigation when Navigation reports one, otherwise from the report. Consumers that need positions, such as Navigation CPA (M1-F), skip Bearing tracks and treat Hybrid points as degraded |
+| R38 | A module that owns several physical sensors of the same kind reads its own hardware configuration directly, from a file that stays with the module (not supplied by the host), naming each physical channel it manages. A module given no such file keeps using one implicit default channel, so single-sensor installs and tests are unaffected |
+| R39 | Each configured channel registers its own `TrackSourceDescriptor` under its own source ID; a report carries the channel it came from, and the module routes it to that channel's sink. A report naming a channel the module has not configured is rejected as `Invalid` and counted, never applied to the wrong channel |
+| R40 | CoreRadar's navigation-radar channels (for example two independently stabilized units) are the concrete case of R38/R39 for M1-E: each gets its own descriptor, antenna rotation rate and source ID. `CoreSonar` is given the same configuration-delivery mechanism for its own civilian channels (echo sounder, NDS sonar), but wiring them to Tracks is out of scope here, since civilian `Core.Sonar` is not a track source (T2) |
 
 ### 21.2 Contract changes (`Poseidon.Contracts`, namespace `Poseidon.Core.Modules`)
 
@@ -248,6 +266,13 @@ touched.
   `TrackReplica` is unchanged apart from the new `Track` shape.
 - `SensorPoints` drops nothing (the `*.input` points stay) and `IRadarInput`
   gains `SetAntennaRotationRate`.
+- **No host change.** Hardware configuration is read by each module itself,
+  from a file deployed alongside it, not delivered or parsed by the host; the
+  host stays exactly as unaware of sensor channels as it already is of every
+  other module-owned concept (R38).
+- **Add** `ChannelId` (string) to `RadarTargetReport`, naming the physical
+  radar the report came from; a module with no configuration file treats
+  every report as the one implicit default channel (R38 to R40).
 
 ### 21.3 Module changes
 
@@ -263,10 +288,21 @@ touched.
   that registers with the Tracks publisher (retrying until Tracks is
   available), normalizes reports and publishes them, and drops the sink on stop.
   They have no queue of their own. Radar adds the rotation-rate setting and now
-  rejects reports without a sensor pose.
+  rejects reports without a sensor pose. CoreRadar also reads its own hardware
+  configuration file, found next to its own assembly (the module locates it
+  itself; no host API is involved), listing the navigation-radar channels it
+  manages (R38). It runs one connector/registration per configured channel,
+  each with its own descriptor, rotation-rate setting and source ID (R39,
+  R40); with no configuration file present it keeps today's single implicit
+  channel. CoreAIS stays single-channel (one receiver assumed) and reads no
+  such file.
 - **CoreDisplay.** Only the new `Track` shape (the status line reads the track
   count and position presence).
-- **CoreSonar, CoreUI, Core.** No change.
+- **CoreSonar.** Gains the ability to read its own hardware configuration file
+  the same way (R38, for its own civilian channels: echo sounder, NDS sonar),
+  but wiring those channels to anything is a later `CoreSonar` feature, not
+  touched here; civilian `Core.Sonar` is not a track source (T2).
+- **CoreUI, Core.** No change.
 
 ### 21.4 Starting parameters (internal `TrackPolicy`, tunable)
 
@@ -292,6 +328,8 @@ touched.
 | Direction finder bearing uncertainty | 5 degrees (one sigma) | The order of the RT-500-M's quoted accuracy |
 | Hybrid point uncertainty growth | The filter's process noise, applied in prediction | The point grows less certain without a range |
 | Source connector retry | 200 ms | Sensors registering with the publisher |
+| Default radar channel (no configuration file) | Source ID `Core.Radar`, channel ID `default` | Preserves today's single-radar behavior unchanged |
+| Configured radar channel source ID | `Core.Radar.<ChannelId>` | For example `Core.Radar.Nav1`; the channel ID is deployer-chosen, not an enum (21.13) |
 
 ### 21.5 Sequencing (each slice ends green on Windows; CI after the last)
 
@@ -315,9 +353,10 @@ Each slice is a unit of work that, under the workflow, is planned here, tested
    file is rewritten around R1 to R21 and R33 to R36; superseded E-tests are
    removed, not patched.
 4. **Tracks ingress, module and sources.** Publisher, per-source queues and the
-   consumer thread, operations feature, manifests, adapters as publishers,
-   radar rotation rate, statistics, the throughput baseline. Tests: R22 to R26,
-   R29 to R31.
+   consumer thread, operations feature, manifests, adapters as publishers (now
+   per configured radar channel, R38 to R40), radar rotation rate per channel,
+   statistics, the throughput baseline. Tests: R22 to R26, R29 to R31, R38 to
+   R40.
 5. **Consumers and integration.** Display (including the bearing line, R37),
    replica and the three integration files updated; the real-runtime fusion
    scenario (R27, R28).
@@ -658,6 +697,93 @@ The questions as asked:
 3. **No distance cap for bearings.** Proposal: bearings use the angular gate
    alone, without the 200 m cap, because the cap would block direction-finder
    fusion beyond about 2 km. Is that acceptable?
+
+### 21.13 Amendment: multiple physical sensors per module (D10, approved 2026-10-28)
+
+Status: raised by the user while scoping slice 4, before its tests are
+written, because it changes how sources register with the Tracks publisher.
+Resolved the same day. R38 to R40 are folded into 21.1, the contract change
+into 21.2, the module changes into 21.3, the source-ID convention into 21.4
+and the slice 4 description into 21.5. This section keeps the reasoning.
+
+**The problem.** A real ship rarely has exactly one sensor of a kind. Navies
+commonly carry two navigation radars, plus a surface-search and an
+air-search (or a combined surface/air surveillance) radar; sonar suites mix
+an echo sounder with hull-mounted, variable-depth and towed-array units. The
+user confirmed the civilian/military split for M1: `CoreRadar` manages only
+navigation radars (surveillance and fire-control radars are `CmsRadar`);
+`CoreSonar` manages only the echo sounder and NDS sonar (hull-mounted, VDS
+and TAS are `CmsSonar`). So even within M1's civilian scope, `CoreRadar` can
+own more than one physical unit, and radar target numbers are only unique
+within one radar's own tracker: if two physical radars both hand out
+"target 7", and both are folded into a single implicit Tracks source
+(today's assumption, one descriptor per module), the correlator would treat
+them as updates to the same source-local track and could fuse two unrelated
+contacts. Civilian `Core.Sonar` is not a track source (T2), so its multiple
+channels are a module-internal concern only, not a Tracks correctness issue,
+but the same mechanism should serve it too rather than inventing a second one
+later.
+
+**Options considered for the sensor's identity:**
+
+| Option | Summary | Verdict |
+|---|---|---|
+| A | One `module.json` package per physical sensor (for example `CoreRadar-Nav1`, `CoreRadar-Nav2`), same entry assembly, distinct module ID and contribution | Rejected: module identity/version/contributions are meant to stay static and build-time; this makes the manifest set deployment-specific (templated per hull) |
+| B | One module, point `radar.input` moved to `Multiple` cardinality, one declared contribution per channel in `module.json` | Rejected for the same reason: the manifest would have to encode a ship's loadout |
+| C | One module, one point, reports carry a channel identifier; the module reads its own channel inventory from a file and registers one `TrackSourceDescriptor` per channel | Chosen |
+
+**Options considered for where the channel inventory lives:**
+
+| Option | Summary | Verdict |
+|---|---|---|
+| 1 | Each module reads its own configuration file directly, kept alongside it, with no host involvement | Chosen (user, 2026-10-28) |
+| 2 | One ship-wide configuration file, read by the host and handed to each module through a new `IModuleHost` passthrough, host-opaque | Rejected: the user wants each module's configuration to stay with that module, not centralized in the host |
+
+**Decision.** Each module that can own several physical sensors of one kind
+reads its own hardware configuration file directly (found next to its own
+assembly; no host API is added or changed). The file lists the physical
+channels that module is responsible for. `CoreRadar` is the concrete case for
+M1-E: each configured navigation-radar channel gets its own
+`TrackSourceDescriptor`, antenna rotation rate and Tracks source ID
+(`Core.Radar.<ChannelId>`, 21.4); `RadarTargetReport` carries a `ChannelId` so
+the module can route an incoming report to the right channel's sink. A
+module given no configuration file keeps one implicit default channel
+(source ID `Core.Radar`), so single-radar installs and the existing slice 1
+to 3 tests are unaffected. `CoreSonar` gains the same file-reading mechanism
+for its own civilian channels, but wiring them to anything is left to a later
+`CoreSonar` feature, since civilian `Core.Sonar` is not a track source (T2)
+and nothing in M1-E touches it. `CoreAIS` is unaffected: a ship normally
+carries one AIS transponder/receiver, and MMSI already identifies a target
+independently of which receiver heard it, so AIS keeps today's single
+implicit source.
+
+**Authoring tool (noted, not scoped).** Option 2's underlying concern — a
+technician configuring a hull's sensor suite wants one place to work, not a
+file buried in each module's own deployed folder — still has merit even
+though runtime stays module-owned (user, 2026-10-28). The proposed answer is
+a separate authoring tool, deployed alongside the application, that edits
+every module's configuration file from one screen or command; it writes to
+the same per-module files `CoreRadar`/`CoreSonar` read at startup and adds no
+new runtime path, so it never has to agree with Tracks or the host about
+anything. Not planned or scoped yet; a backlog candidate, tracked here and in
+the master plan's follow-on work.
+
+**Settled while writing the slice 4 tests (2026-10-28):** the file is named
+`sensors.json`, found beside the module's own assembly; its shape is
+`{ "channels": [ { "channelId": "...", "antennaRotationRateRpm": ... } ] }`.
+A malformed file (duplicate channel IDs, a non-positive rotation rate) is
+reported as `InvalidDataException`, the same way other module start failures
+are (for example `RadarModule`'s unsupported checkpoint). A missing file is
+not an error: it yields one implicit channel, ID `default`.
+
+**Still open**:
+
+1. Whether a channel's role (for example distinguishing two navigation radars
+   by mounting position) needs to be more than a free-form string the
+   deployer chooses, the same way `TrackSourceKinds` stays open for CMS to
+   extend.
+2. The authoring tool itself: scope, where it lives in the repository, and
+   whether it is a slice of this feature or its own later feature file.
 
 ## Ledger
 
@@ -1029,4 +1155,663 @@ and both the Civilian and Military aggregates (no MSB4181 this time). Every
 slice 3 row above now passes.
 
 **Accepted by the user on 2026-10-28**, including the test and production
-fixes above. Slice 3 is done; slice 4 (ingress) has not started.
+fixes above. Slice 3 is done; slice 4 (ingress) is accepted (see below);
+slices 5 and 6 have not started.
+
+### Slice 4 (ingress): Step 2, tests written 2026-10-28
+
+Scope: R22 to R26, R29 to R31 (publisher, per-source queues, consumer thread,
+statistics, system health, throughput baseline) and R38 to R40, the
+multi-sensor-channel amendment (21.13) raised before this slice's tests were
+written and folded into the plan the same day. R22 (`TrackMotion.Predict`)
+was already implemented in slice 1. The adapters' full rewire onto the
+publisher (removing `ObservationRelay`/`ITrackIngestion`) and R23's full
+real-runtime shape are Step 3; `tracks.ingestion` stays working unchanged
+until then.
+
+Contract shapes added for real (data shape, not the behavior under test), per
+21.2: `TrackPoints.Publisher`/`Operations`; `ITrackSink` and `ITrackPublisher`;
+`SourceStatistics`, folded into `SourceStatus` as an optional field;
+`TrackSystemHealth`/`TrackSystemStatus`, folded into `TrackSnapshot` and
+`TrackChange`/`TrackChangeKind` (a new `System` kind). `RadarTargetReport`
+gains `ChannelId` (default `"default"`, so existing callers are unaffected);
+`IRadarInput` gains `SetAntennaRotationRate(channelId, rpm)`.
+
+Production stubs (Step 2, throw `NotImplementedException` for the part that
+is genuinely new this slice):
+
+- `TrackIngress` (new, `CoreTracks`), the publisher side of 21.9: its
+  `Register` delegates to `TrackManager.RegisterSource`, already real and
+  working since slice 3 (validates the descriptor and stores it), and only
+  then throws, because the per-source queue and the sink it would return do
+  not exist yet. `TracksModule.Features` now also exposes
+  `tracks.publisher` (backed by `TrackIngress`) and `tracks.operations`
+  (backed by `TrackManager`, whose `Merge`/`Split` have been real since
+  slice 3 — exposing them through the module is plumbing, not new
+  behavior). `CoreTracks/module.json` gains both points and contributions.
+- `RadarModule.SetAntennaRotationRate` stub.
+- `RadarHardwareConfiguration.LoadChannels` (new, `CoreRadar`, internal): the
+  R38/R40 channel-config reader; fully stubbed, since nothing of it existed
+  before this slice. Not yet called from `RadarModule.StartAsync` or
+  `Submit`; that wiring, and the actual adapter rewrite, are Step 3.
+
+Tests (new `Tests/Core/CoreTracks.Tests/TrackIngressTests.cs`; additions to
+`TracksModuleTests.cs`; new `Tests/Core/CoreRadar.Tests/RadarHardwareConfigurationTests.cs`;
+additions to `RadarAdapterTests.cs`), each written as if the feature already
+worked so it exercises real assertions once Step 3 lands:
+
+| Requirement | Tests |
+|---|---|
+| R23 | `TrackIngressTests.Register_WithAnInvalidDescriptor_ThrowsArgumentException` (real, passes today), `Register_WithAValidDescriptor_ReturnsASinkBoundToTheSource`, `Register_TheSameSourceIdAgain_ReplacesTheEarlierSink_WhichStopsAcceptingPublishes`; `TracksModuleTests.Publisher_Register_ValidatesTheDescriptor_AndReturnsASinkBoundToTheSource` |
+| R24 (partial) | `TracksModuleTests.TracksModule_RunsCorrectly_WithNoSourceEverRegistering` (real, passes today). The reload pick-up/drop half needs the real ingress and moves to slice 5's real-runtime scenario (R27, R28) |
+| R25, R40 | `RadarAdapterTests.SetAntennaRotationRate_ChangesTheChannelsRegisteredInterval` |
+| R26 | `TrackIngressTests.Publish_WhenASourcesQueueIsFull_DropsTheOldestReportAndCountsItInsteadOfBlocking`, `TrackSystemHealth_BecomesDegraded_WhileAQueueIsDropping_AndRecoversAfterTenSecondsWithoutDrops` |
+| R29 | `TrackIngressTests.ConcurrentSources_EachKeepTheirOwnOrder_AndNoneStarvesTheOthers` |
+| R30 | `TrackIngressTests.SourceStatistics_ExposeReceivedCreatedUpdatedRejectedDroppedQueueDepthAndLastRejection` |
+| R31 | `TrackIngressTests.ThroughputBaseline_IsMeasuredAtOneThousandTracks_AsAMeasurementNotAGate` |
+| R38 | `RadarHardwareConfigurationTests.LoadChannels_WithNoConfigurationFile_ReturnsOneImplicitDefaultChannel` |
+| R39 | `RadarAdapterTests.Submit_WithAChannelIdThatIsNotConfigured_IsRejectedAsInvalid` (real-behavior-gap failure: today's `Submit` ignores `ChannelId` entirely) |
+| R40 | `RadarHardwareConfigurationTests.LoadChannels_ParsesEachConfiguredChannel_WithItsOwnRotationRate`, `LoadChannels_RejectsDuplicateChannelIds_AsAMalformedFile`, `LoadChannels_RejectsANonPositiveRotationRate_AsAMalformedFile` |
+| Module wiring (21.3, 21.5; not its own R-id) | `TracksModuleTests.Manifest_DeclaresAllFourPointsAndContributesEachOfThem`, `Features_ImplementTheDeclaredSharedContracts` (both real, pass today) |
+
+Failing run (2026-10-28, Windows): `dotnet build Core.Application.proj`: no
+warnings or errors. `dotnet test Tests/Core/CoreTracks.Tests/CoreTracks.Tests.csproj`:
+8 failed of 73 — the 8 new tests that need a working sink, all with
+`System.NotImplementedException` from `TrackIngress.Register` (uncaught); the
+other 65, including the real `Register_WithAnInvalidDescriptor...`,
+`Manifest_...`, `Features_...` and `TracksModule_RunsCorrectly...` tests and
+every slice 1 to 3 test, pass. One collateral fix: `TrackPipelineIntegrationTests`'
+hard-coded feature-point list is updated for the two new points (not a
+behavior change). `dotnet test Tests/Core/CoreRadar.Tests/CoreRadar.Tests.csproj`:
+6 failed of 29 — 4 via the uncaught `NotImplementedException` from
+`RadarHardwareConfiguration.LoadChannels` or `RadarModule.SetAntennaRotationRate`,
+1 (`LoadChannels_Rejects...`, both malformed-file cases) via `Assert.Throws<InvalidDataException>`
+catching the stub's `NotImplementedException` instead, and 1
+(`Submit_WithAChannelIdThatIsNotConfigured...`) because today's `Submit`
+returns `None` (accepted) rather than `Invalid`, since it does not look at
+`ChannelId` at all yet; the other 23 pass. `dotnet test Poseidon.slnx`: every
+other project passes (`Contracts.Tests` 105 of 105, `Core.Tests` 116 of 116,
+`CoreAIS.Tests` 30 of 30, `CoreUI.Tests` 28 of 28, `CoreDisplay.Tests` 18 of
+18, `CoreSonar.Tests`/`CoreNavigation.Tests`/`CoreCharts.Tests` 8 of 8 each,
+every CMS smoke project); the Civilian aggregate's own module-suite rerun surfaces
+the same CoreTracks/CoreRadar failures as an MSBuild MSB4181 (its usual way of
+propagating an inner suite failure, consistent with every earlier slice's
+failing run) and the run stops there, so Military's rerun was not reached —
+expected collateral, not a new problem.
+
+Assumed while writing the tests:
+
+- `TrackIngress.Register`'s split between real validation/storage (delegated
+  to the already-accepted `TrackManager.RegisterSource`) and a stub for the
+  genuinely new queue/sink: nothing in the approved plan constrained how the
+  stub boundary falls inside `Register` itself, so the split was chosen to
+  give Step 2 a real, passing assertion for descriptor validation (consistent
+  with R11 already being accepted behavior) while still failing for the right
+  reason on the new sink.
+- `RadarHardwareConfiguration.LoadChannels` is fully stubbed with no such
+  split, because nothing about reading a hardware configuration file existed
+  before this slice; the file format decided above is recorded in 21.13, not
+  assumed silently.
+- R24's reload pick-up/drop half is deferred to slice 5 rather than given a
+  speculative test now, consistent with how slice 3 deferred the AIS+radar
+  fusion scenario to the same place (R27, R28).
+
+### Slice 4 (ingress): Step 3, code written 2026-10-28
+
+The user ordered the implementation on 2026-10-28.
+
+**Scope decision, flagged for the Step 3 gate rather than assumed silently:**
+this pass makes the 14 approved tests pass and nothing else; it does not
+remove `ObservationRelay`/`ITrackIngestion` or rewire `CoreAIS`/`CoreRadar`
+onto `ITrackPublisher`/`ITrackSink`, because no approved test exercises that
+path (the adapters still work exactly as before, through the relay). The
+slice 4 Step 2 entry's note that the full rewire "are Step 3" was broader
+than what the approved tests actually require; the rewire (and R23's full
+real-runtime shape) stays open, now called out explicitly below rather than
+assumed done.
+
+- `TrackIngress` is implemented for real: a bounded, drop-oldest, per-source
+  queue (`max(4,096, 10 x declared peak rate)`, per 21.4), a `QueuedTrackSink`
+  that rejects publishes once its source re-registers and replaces it
+  (`Unavailable`), a background consumer (`Start`/`StopAsync`) that round-
+  robins every source's queue in batches of 128, and an internal `DrainOnce`
+  that performs exactly one such round synchronously — the production pump
+  calls it in a loop with a short idle delay; tests call it directly instead
+  of starting the pump, so they stay deterministic with no polling.
+- `TrackManager` gains per-source statistics (R30) and system health (R26):
+  `SubmitLocked` is wrapped (renamed to `SubmitLockedCore`) so every outcome
+  updates a `SourceStatisticsAccumulator` (Received always; Created, Updated,
+  or a rejection-reason bucket and `LastRejection`); a new internal
+  `RecordQueueMetrics(sourceId, queueDepth, droppedDelta)` is how
+  `TrackIngress` reports its own queue's depth and drops, since the manager
+  has no other way to know them. A drop stamps a system-wide `lastDropUtc`;
+  `GetSnapshot()` computes `TrackSystemStatus` from it (Degraded within 10 s
+  of the last drop, Healthy otherwise) and merges each source's statistics
+  into its `SourceStatus`. Statistics and the drop timestamp are not
+  checkpointed (documented in `Tracks.cs`): they are runtime observability,
+  reset like any other process-lifetime counter would be, not track state.
+- `TracksModule.StartAsync`/`StopAsync` now also start/stop the ingress pump.
+- `RadarHardwareConfiguration.LoadChannels` is implemented for real: reads
+  `sensors.json` next to the module's own assembly, returns one implicit
+  `default` channel (24 rpm) when the file is absent, and throws
+  `InvalidDataException` for a missing/empty channel list, a blank channel
+  ID, a duplicate channel ID, or a non-positive rotation rate.
+- `RadarModule` loads its channel list on every `StartAsync` (so a reload
+  picks up an edited file) and `Submit` rejects a report naming a channel
+  that was not loaded, as `Invalid` (R39). `SetAntennaRotationRate` stores
+  the rate per channel; it does not yet register a per-channel descriptor
+  with Tracks (that needs the deferred rewire above). The leftover
+  `cms.radar.surveillance` capability (noted in passing during the 21.13
+  discussion) is removed, since `CoreRadar` is navigation-only.
+
+Test-design fixes found while making the tests pass, corrected rather than
+the production code (development workflow rule 2; a wrong test is fixed and
+the reason recorded here, not silently adjusted):
+
+- `TrackIngressTests.ConcurrentSources_...`, `SourceStatistics_...` and
+  `ThroughputBaseline_...` asserted on `TrackManager.GetSnapshot()`
+  immediately after publishing, with no consumer ever draining the queue;
+  under the approved async ingress design (21.9) that assertion can never
+  pass. Each now calls the new `DrainOnce()` (in a `while` loop) after
+  publishing, which processes everything deterministically without starting
+  the background pump or polling — a mechanical fix to how the test awaits
+  the result, not to what it checks.
+- `TrackManagerTests.Checkpoint_PreservesContributionsDescriptorsAndSourceHealth_AndRestoredTracksStillCorrelate`
+  (slice 3) compared `before.Sources` and `after.Sources` for full equality;
+  `SourceStatus` now carries `Statistics`, which is intentionally not
+  checkpointed, so a restored source's statistics are always null while the
+  original's are not. The comparison now excludes `Statistics` and a new
+  assertion states directly that it is null after restore, rather than
+  silently dropping the check.
+
+Passing run (2026-10-28, Windows): `dotnet build Core.Application.proj`: no
+warnings or errors. `dotnet test Tests/Core/CoreTracks.Tests/CoreTracks.Tests.csproj`:
+73 of 73 passed (the 8 new ingress tests, the corrected checkpoint test, and
+every slice 1 to 3 test). `dotnet test Tests/Core/CoreRadar.Tests/CoreRadar.Tests.csproj`:
+29 of 29 passed. `dotnet test Poseidon.slnx`: every project passed with zero
+failures, including both aggregates (no MSB4181 this time) and every CMS
+smoke project. Every row in the slice 4 Step 2 requirement-to-test table now
+passes.
+
+**Not done in this pass, carried forward:**
+
+1. `ObservationRelay`/`ITrackIngestion` removal and rewiring `CoreAIS`/
+   `CoreRadar` onto `ITrackPublisher`/`ITrackSink` (21.6); `tracks.ingestion`
+   stays in the manifest and working until then.
+2. `CoreRadar` registering one `TrackSourceDescriptor` per configured
+   channel with Tracks (today it loads channels and rejects unconfigured
+   ones, but does not register anything with the publisher); `CoreAIS`
+   registering its own descriptor (R25).
+3. `CoreSonar` reading its own hardware configuration file (noted in 21.13
+   as not touched by M1-E, since civilian `Core.Sonar` is not a track
+   source).
+4. R23's full real-runtime shape and R24's reload pick-up/drop half, both
+   already deferred to slice 5's real-runtime scenario in the Step 2 entry.
+5. R31's throughput baseline is exercised by a correctness test
+   (`ThroughputBaseline_IsMeasuredAtOneThousandTracks...`), not yet a timed
+   measurement recorded as data; turning it into an actual rate measurement
+   is still open.
+
+**Accepted by the user on 2026-10-28**, including the "not done in this
+pass" list above as carried-forward scope rather than finished work. Slice 4
+is done on those terms; items 1 and 2 of that list (the `ObservationRelay`/
+`ITrackIngestion` removal, the adapter rewire onto the publisher, and
+`CoreRadar`/`CoreAIS` registering their descriptors) are a prerequisite for
+slice 5's real-runtime fusion scenario (R27, R28), which needs sources
+actually publishing through the new ingress to be a meaningful end-to-end
+test of this slice's own design. They are picked up as the first step of
+slice 5's own Step 2/3 work, not as a separate slice of their own.
+
+### Slice 5 (consumers and integration): Step 2, tests written 2026-10-29
+
+Two open points were resolved with the user before writing tests, since the
+plan did not pin them down: which three integration files 21.5 item 5 means
+(the two existing `*IntegrationTests.cs` files plus a new real-runtime fusion
+test), and how R37's bearing line should be realized given `ChartViewport` has
+no chart projection or canvas yet (expose the line's geographic data, not
+pixels, for a future renderer to draw).
+
+Carried-forward rewire (slice 4's deferred first step, 21.6):
+
+- `ITrackIngestion` and `tracks.ingestion` (both the point and the
+  `TrackPoints` constants) are removed outright, with no compatibility shim,
+  from `Tracks.cs`, `module.json`, `TrackManager` (keeps `Submit`/
+  `SubmitBatch`/`ReportSourceHealth` as plain methods; `TrackIngress` still
+  calls them directly) and `TracksModule`'s `Features`.
+- `ObservationRelay.cs` and its test file are deleted. A new
+  `TrackSourceConnector` (`Poseidon.Core.Modules`, Contracts) replaces its
+  role per source: real descriptor validation, `Publish`/`ReportHealth`/
+  `UpdateDescriptor`, but `Start`/`StopAsync` (the background task that
+  retries `ITrackPublisher.Register` every 200 ms, 21.4) are
+  `NotImplementedException` stubs, matching the precedent `TrackIngress`
+  itself set in slice 4 Step 2.
+- `AisModule` and `RadarModule` are rewired onto `TrackSourceConnector`.
+  `RadarModule` holds one connector per configured channel (source ID
+  `Core.Radar` for the default channel, `Core.Radar.<ChannelId>` otherwise,
+  21.4), derives each channel's descriptor from its rotation rate
+  (`DescriptorFor`, real), and `SetAntennaRotationRate` now re-registers the
+  recomputed descriptor instead of only recording the rate. Because
+  `ObservationRelay` used to stamp each observation's sequence number and
+  checkpoint the counter, and nothing else inherits that role, `AisModule`
+  and `RadarModule` (per channel) now own their own sequence counter and
+  checkpoint directly (new schema versions: 1 for AIS, 2 for Radar's
+  per-channel dictionary).
+- `Tests/Shared/FakeTrackHost.cs`: `RecordingIngestion`/`Ingestion` become
+  `RecordingPublisher`/`Publisher` (an `ITrackPublisher` that also records
+  the last descriptor registered per source, for the rotation-rate test
+  below), routed through `tracks.publisher` instead of `tracks.ingestion`.
+
+| Requirement | Tests | Failing run (2026-10-29) |
+|---|---|---|
+| R23 (carried over) | `AisModuleTests.RunningAdapter_NormalizesAndForwardsReportsAndHealthToTracks`, `RadarModuleTests.Adapter_IsUnavailableUntilStarted_ThenForwardsReportsAndHealth`, `Sequence_IsCheckpointedAcrossRestarts_AndUnsupportedStateIsRejected` (both adapters), `ModuleDeclarationTests.StopBeforeStart_IsSafeAndIdempotent` | Fail: `TrackSourceConnector.Start` is a stub |
+| R25, R40 (rotation rate → descriptor) | `RadarModuleTests.DescriptorFor_DerivesTimingsFromTheRotationRate_ScalingUpOnlyWhenSlow` (real logic, passes now), `SetAntennaRotationRate_ReRegistersTheDefaultChannelsDescriptorWithTheNewInterval` | The second fails: needs the real connector to observe the re-registered descriptor |
+| R38 to R40 (per-channel source ID) | `RadarModuleTests.SourceIdFor_NamesTheDefaultChannelPlainly_AndOthersWithTheirOwnChannelId` (real, passes), `SetAntennaRotationRate_OnAnUnconfiguredChannel_ThrowsArgumentException` (real, passes), `Submit_WithAChannelIdThatIsNotConfigured_IsRejectedAsInvalid` (fails: needs Start) | |
+| R27, R28 (real-runtime fusion) | `TrackPipelineIntegrationTests.AisAndRadar_OfOneVessel_FuseIntoOneTrack_WhichSurvivesReload_AndOutlivesEitherSource` (new) | Fails: needs both adapters' connectors to register for real |
+| R37 (Display bearing line) | `TrackLayerTests.BearingLines_IncludeBearingAndHybridTracksOnly_StyledByEachTracksOwnState` | Fails: `ChartViewport.BearingLines` is a stub |
+| R33/R37 (replica carries bearing tracks) | `TrackReplicaTests.ABearingTrack_WithNoPositionAndANonNullBearing_FlowsThroughSnapshotAndChanges` (new) | Passes already: `TrackReplica` is unchanged (21.6), added as coverage, not forced red |
+
+Failing run (2026-10-29, Windows): `dotnet test Poseidon.slnx`: 16 tests fail
+across `CoreAIS.Tests` (4), `CoreRadar.Tests` (5), `CoreTracks.Tests` (5),
+`CoreUI.Tests` (1, `ShellViewportIntegrationTests.AisInput_...` — purely
+collateral from `AisModule.StartAsync`'s stub, confirming it needed no
+behavioral edit of its own) and `CoreDisplay.Tests` (1). Every failure is
+`NotImplementedException` from `TrackSourceConnector.Start`/`StopAsync` or
+`ChartViewport.BearingLines` — none is a compile error or a mis-wired test.
+Every other test, including every slice 1 to 4 test, still passes.
+
+Bug found and fixed while verifying the failing run (development workflow
+rule: a wrong test or a wrong assertion is fixed and the reason recorded, not
+silently left): `RadarModule.Submit` returned `Invalid` ("channel not
+configured") instead of `Unavailable` when called before `StartAsync`,
+because an empty `connectors` dictionary looked the same as a populated one
+missing that channel. `AisModule` already distinguished these correctly (a
+nullable single connector). Fixed by adding an explicit `started` flag to
+`RadarModule`, checked first in `Submit`.
+
+Not done in this pass, by design (Step 2 only): the real registration/retry
+loop in `TrackSourceConnector`, and the real Bearing/Hybrid filtering in
+`ChartViewport.BearingLines`. Both are Step 3.
+
+Gate: presented to the user 2026-10-29; approved the same day, ordering
+Step 3 (code).
+
+### Slice 5 (consumers and integration): Step 3, code written 2026-10-29
+
+- `TrackSourceConnector.Start`/`StopAsync` are implemented for real: `Start`
+  runs a background task (execution-context flow suppressed, matching
+  `ObservationRelay`/`TrackReplicaPump`) that retries
+  `ITrackPublisher.Register` every `retryDelay` (200 ms default) until it
+  succeeds, then holds the sink; `StopAsync` cancels the loop and disposes
+  the sink. An `UpdateDescriptor` call that lands between the loop reading
+  the descriptor and the registration completing is reconciled once the
+  sink is set (the stored descriptor and the one just used are compared by
+  value; a mismatch is forwarded to the fresh sink), so a rotation-rate
+  change is never silently lost to that race (R25: "the new timings apply
+  immediately").
+- `ChartViewport.BearingLines` is implemented for real: one `BearingLine`
+  per Bearing- or Hybrid-kind track with a non-null `Bearing`, carrying that
+  track's own `State`.
+
+Bugs found and fixed while making the tests pass (development workflow
+rule: corrected, not patched around, and recorded here):
+
+- `AisModule.Submit` and `RadarModule.Submit` incremented their sequence
+  counter before checking whether the connector had actually registered
+  (`Sink is null`), so a report submitted in the window between `StartAsync`
+  returning and the background registration completing was rejected as
+  `Unavailable` but still permanently consumed a sequence number. Fixed by
+  moving the `Sink is null` check before the increment in both, matching
+  `ObservationRelay`'s old behavior (a rejected-before-the-channel report
+  never advanced its sequence either).
+- Three adapter tests (`RunningAdapter_...`/`Adapter_IsUnavailableUntilStarted_...`,
+  both `Sequence_IsCheckpointedAcrossRestarts_...`, and
+  `SetAntennaRotationRate_ReRegistersTheDefaultChannelsDescriptorWithTheNewInterval`)
+  asserted on the very first `Submit`/descriptor read immediately after
+  `StartAsync`, assuming registration had already completed; now that it is
+  a real background task, that is a race. Fixed by polling past it
+  (`SubmissionPolling.UntilRegisteredAsync` in `FakeTrackHost.cs`, and an
+  inline poll for the descriptor test) — a mechanical fix to how each test
+  awaits readiness, not to what it checks, the same category as slice 4's
+  `DrainOnce` fixes.
+
+Passing run (2026-10-29, Windows): `dotnet build Poseidon.slnx`: no warnings
+or errors. `dotnet test Poseidon.slnx` run three times in a row: every
+project passes with zero failures each time (including both aggregates,
+every CMS smoke project, and `CoreUI.Tests`' `ShellViewportIntegrationTests`),
+with no MSB4181 recurrence. Every row in the slice 5 Step 2 requirement-to-
+test table now passes.
+
+**Accepted by the user on 2026-10-29.** Slice 5 is done. Slice 5's code was
+committed on 2026-10-31 (`ee0e486`). Slice 6 (close-out) has not started.
+
+### Slice 6 (close-out): cross-platform CI failures on the slice 5 PR, fixed 2026-10-31
+
+The slice 5 PR's CI failed on all three platforms (Windows, Arch Linux,
+RHEL-compatible). Both failures are in
+`Tests/Core/CoreTracks.Tests/TrackPipelineIntegrationTests.cs`, which
+deliberately exercises the real background registration/retry loop
+(`TrackSourceConnector.Start`, R23) and the real ingress pump
+(`TrackIngress`'s background task) rather than `DrainOnce()`, so these tests
+are exposed to real async scheduling delays that the CI runners apparently
+hit harder than the development machine:
+
+1. `SourceDisconnect_IsVisibleInTheFeed_AndAnObservationRestoresIt` timed out
+   at its 15s deadline on Windows and Arch Linux, but passed cleanly on an
+   immediate retry within the same job (the solution's `Civilian.Tests`/
+   `Military.Tests` aggregates re-run every referenced test project, so each
+   project's tests execute twice per `dotnet test` invocation). Not a logic
+   bug: `WaitForTracks`'s margin was simply too tight for a loaded CI runner.
+2. `Reload_KeepsTrackIdsAndConsumerCursors_AndTheSensorKeepsUpdatingTheSameTrack`
+   failed deterministically (twice) on RHEL with `.Accepted` false immediately
+   after the test's post-reload `Submit`, not a timeout. Touching `CoreTracks`
+   forces `AisModule.StartAsync` to recreate its `TrackSourceConnector`, whose
+   registration against the new `TrackIngress` runs on a background task
+   (21.3, R23) and is not guaranteed to complete before the test's very next
+   `Submit` call, which asserted `.Accepted` with no retry margin at all. The
+   identical race is already handled for the adapter unit tests by
+   `SubmissionPolling.UntilRegisteredAsync` (`Tests/Shared/FakeTrackHost.cs`);
+   this integration test just never got the same treatment.
+3. The RHEL log's trailing `error MSB4181` from `Civilian.Tests` is not a
+   third bug: it is simply how the aggregate's nested
+   `<MSBuild Targets="VSTest">` (`RunCivilianModuleSuites`) echoes an inner
+   test project's failure (documented above, "its usual way of propagating
+   an inner suite failure"). It disappeared once (2) was fixed.
+
+Fixed (test-only, mechanical, development workflow rule: wrong test timing
+assumptions corrected and recorded, not the production code, which is
+correct):
+
+- `WaitForTracks`'s deadline raised from 15s to 30s.
+- Added `SubmitAisUntilRegistered`, the same shape as
+  `SubmissionPolling.UntilRegisteredAsync`, and used it for the one `Submit`
+  that follows a reload in `Reload_KeepsTrackIdsAndConsumerCursors_...`.
+
+Passing run (2026-10-31, Windows): `dotnet build Core.Application.proj`: no
+warnings or errors. `dotnet test Poseidon.slnx` run three times in a row:
+every project passes with zero failures each time, including both
+aggregates (no MSB4181) and `CoreTracks.Tests` (74/74 each time).
+
+A second push's Arch Linux CI run then failed again, this time
+`Reload_KeepsTrackIdsAndConsumerCursors_...` itself timing out at the new 30s
+deadline. Raising `WaitForTracks`'s margin was treating a symptom: the real
+cause is that several classes in this assembly
+(`TrackPipelineIntegrationTests`, `TracksModuleTests`, `CoreTracksModuleTests`)
+each run a real `TracksModule`/`ModuleRuntime` — a real 1s
+`TimeProvider.System` tick timer plus `TrackIngress`'s and
+`TrackSourceConnector`'s background `Task.Run` pumps and registration loops —
+and xunit's default test-collection parallelism (one collection per class,
+run concurrently) packs many of these onto the thread pool at once. Under a
+constrained CI runner that starves them badly enough to blow even a 30s poll,
+which no amount of further bumping meaningfully fixes.
+
+Fixed instead at the source: `[assembly: CollectionBehavior(DisableTestParallelization = true)]`
+added for `CoreTracks.Tests` (`AssemblyInfo.cs`), so these real-background-task
+test classes run sequentially instead of fighting each other for the thread
+pool. Confirmed with `dotnet test Tests/Core/CoreTracks.Tests` three times in
+a row (74/74 each time, ~3s) and `dotnet test Poseidon.slnx` twice more
+(zero failures, both aggregates, no MSB4181). The 30s `WaitForTracks` margin
+and the `SubmitAisUntilRegistered` registration-race fix both stay as
+defense in depth.
+
+If this same class of flake recurs in another assembly that mixes real
+`ModuleRuntime`/background-task tests with many unit tests (`CoreAIS.Tests`,
+`CoreRadar.Tests`, `CoreUI.Tests` all have real adapters/timers too), the same
+fix applies there.
+
+A third push's RHEL CI run then failed again on the very same
+`SourceDisconnect_IsVisibleInTheFeed_...`, timing out at the new 30s
+deadline, even with per-assembly test-collection parallelism disabled.
+Disabling parallelism inside `CoreTracks.Tests` only addressed contention
+*within* that one process; the CI logs show `dotnet test Poseidon.slnx`
+itself running many projects' VSTest executions concurrently (the default
+for MSBuild/`dotnet test` on a multi-project solution, confirmed locally:
+without a cap, `Test run for X.dll` lines from different projects visibly
+interleave before any one of them finishes). On a CPU-constrained CI
+container, that cross-process contention — not anything inside one test
+assembly — is what starves `TrackIngress`'s/`TrackSourceConnector`'s
+background tasks badly enough to blow any poll deadline; it also explains
+why only the *first* run of `CoreTracks.Tests.dll` in a job has ever failed,
+never the aggregate's later rerun of the same binary, since by then most
+other projects' test runs have already finished and the contention is gone.
+
+Fixed at the actual source this time: added `-maxCpuCount:1` to the
+`dotnet test Poseidon.slnx` invocation in both `.github/scripts/ci-linux.sh`
+and the Windows job of `.github/workflows/build-test-package.yml`, forcing
+every project's build+test to run one at a time instead of all at once.
+Confirmed locally that this flag is honored (every `Test run for X.dll` now
+completes before the next one starts, no interleaving) and that
+`dotnet test Poseidon.slnx -maxCpuCount:1` still passes cleanly end to end.
+This is a CI-script change, not a test-only one, and trades some CI wall
+time for removing the actual cross-process contention; current per-project
+durations suggest the total stays well inside the existing 30/45 minute
+job timeouts, but that's only confirmed once it has actually run in CI.
+
+A fourth push's RHEL and Windows CI runs then both failed fast and
+deterministically (not a timeout) on a different test:
+`TracksModuleTests.Module_CheckpointsItsTracks_AndRestoresThemAfterRestart`,
+`Assert.Single() Failure: The collection was empty`. `-maxCpuCount:1`
+worked exactly as intended (every `Test run for X.dll` in both logs
+completes before the next starts, no interleaving at all), so this is a
+genuinely different bug, not a recurrence of the cross-process contention.
+
+Reproduced locally (not CI-specific): running the whole `CoreTracks.Tests`
+project repeatedly reproduces it roughly 1 run in 3 to 5. Diagnostic output
+added temporarily at the failure point showed `sink.Publish(...).Accepted`
+true (the observation really was enqueued) but every one of
+`TrackManager`'s per-source counters (`Received`/`Created`/etc.) at zero —
+proof `SubmitBatch` was never reached for it at the moment checked, not that
+it was rejected.
+
+Root cause: a genuine TOCTOU race in the test helper `DrainSynchronously`
+(`while (ingress.DrainOnce()) {}`), used by both `TracksModuleTests` and
+`TrackIngressTests`, but only risky where the module's real background pump
+is also running (`TracksModule.StartAsync` calls `ingress.Start()`; only
+`TracksModuleTests` goes through that — `TrackIngressTests` constructs a bare
+`TrackIngress` and never starts it, so it was never at risk).
+`TrackIngress.DrainOnce()` takes its queue snapshot under a lock but then
+dequeues and calls `TrackManager.SubmitBatch` *outside* that lock, so the
+real pump and a test's manual drain can run `DrainOnce()` concurrently: the
+pump can dequeue the one item (so the test's own `DrainOnce()` call finds
+the queue already empty and returns false) while still being mid-call into
+`SubmitBatch` — a caller that asserts on the manager's state immediately
+after `DrainSynchronously` returns can observe that gap. The helper's own
+old comment ("DrainOnce finds nothing once the pump already consumed an
+item") assumed finding nothing meant the pump had *finished*, not just
+*started*; that assumption is what was wrong. Not a production bug — nothing
+in production code ever calls `DrainOnce()` manually like this.
+
+Fixed in `TracksModuleTests.cs` (test-only, mechanical, development
+workflow rule: documented here, not in the test body as a comment on every
+line): the two spots that asserted immediately after
+`DrainSynchronously(publisher)` while the module's pump was still running
+(`Module_AgesTracksOnItsOwnTimer_AndStopsIdempotently`'s first assertion,
+and `Module_CheckpointsItsTracks_AndRestoresThemAfterRestart`) now use the
+file's own `WaitUntil` helper to poll for the expected track count instead
+of asserting on a single snapshot. `DrainSynchronously`'s comment rewritten
+to explain the real race and point future readers at the `WaitUntil`
+pattern. The other `DrainSynchronously` call in
+`Module_AgesTracksOnItsOwnTimer_...` (after the module is stopped) was never
+at risk, since nothing is running the pump by then, and was left as is.
+
+Confirmed locally: 30 runs of `dotnet test Tests/Core/CoreTracks.Tests` in a
+row, zero failures (previously reproduced in roughly 1 of every 3 to 5 runs
+before this fix), plus a full `dotnet test Poseidon.slnx -maxCpuCount:1`
+run, zero failures, no MSB4181.
+
+Pushed and confirmed: CI passed on all three platforms (Windows, Arch
+Linux, RHEL-compatible) on the next run. The slice 5 PR's CI is green.
+
+A later PR run then failed again on Windows, same symptom: `Civilian.Tests`
+failing with the trailing `MSB4181`, and `SourceDisconnect_IsVisibleInTheFeed_
+AndAnObservationRestoresIt` timing out at the 30s `WaitForTracks` deadline in
+the log underneath it. Not a recurrence of the same contention inside
+`dotnet test Poseidon.slnx`: that invocation (`build-test-package.yml`'s "Run
+all tests" step) already has `-maxCpuCount:1` and had already passed in the
+same job. The failure was in the separate "Collect civilian coverage" step,
+which runs `dotnet test Tests/Aggregate/Civilian.Tests/Civilian.Tests.csproj`
+as its own `dotnet test` invocation (for `--collect "XPlat Code Coverage"`)
+and never got the `-maxCpuCount:1` flag when it was added to the first step:
+its nested `<MSBuild Targets="VSTest">` reruns every inner test project
+concurrently again, reproducing the exact cross-process contention already
+diagnosed above. `ci-linux.sh` has no equivalent separate coverage step, so
+Arch Linux and RHEL were never exposed to this.
+
+Fixed (CI-script only): added `-maxCpuCount:1` to the "Collect civilian
+coverage" step in `build-test-package.yml` as well.
+
+
+
+Per 21.5 item 6: full solution run, ledger rows, documentation of tuning
+values and known limits, then PR and cross-platform CI (the PR's CI is
+already green, from the fix pass above).
+
+**Final passing run (2026-10-31, Windows):** `dotnet build Core.Application.proj`:
+no warnings or errors. `dotnet test Poseidon.slnx -maxCpuCount:1`: zero
+failures across every project, run twice (once directly, once via each
+aggregate's nested rerun), including both aggregates and every CMS smoke
+project. Unique test count across the whole solution: 430 (Contracts.Tests
+94, Core.Tests 116, CoreTracks.Tests 74, CoreAIS.Tests 30, CoreRadar.Tests
+34, CoreUI.Tests 28, CoreDisplay.Tests 19, CoreCharts.Tests 8,
+CoreNavigation.Tests 8, CoreSonar.Tests 8, nine CMS smoke projects at 1
+each, Civilian.Tests 1, Military.Tests 1).
+
+### Post-merge recurrence: RHEL CI, M1-H/M1-I PR, 2026-11-01 — open, not fixed
+
+The same signature recurred on a later PR (M1-H/M1-I, unrelated to track
+code) on RHEL only: `SourceDisconnect_IsVisibleInTheFeed_AndAnObservationRestoresIt`
+timed out at the 30s `WaitForTracks` deadline inside `Civilian.Tests`' nested
+`RunCivilianModuleSuites` rerun, then passed instantly (1s, 74/74) when
+`CoreTracks.Tests` ran again later in the same job as its own top-level
+project — trailing `MSB4181` included, same as every prior round.
+
+This corrects the "Arch Linux and RHEL were never exposed to this" note
+above: `ci-linux.sh`'s single `dotnet test Poseidon.slnx -maxCpuCount:1` step
+already has the flag and had it the whole time, so the cross-project VSTest
+overlap that flag fixes was not the cause here. The working theory was a
+genuinely cold first test run on these Linux jobs: no SDK/package caching,
+`dnf`/subscription-manager overhead and a 240MB SDK download all happen in
+the same job immediately before testing starts, and the container shares a
+2-vCPU GitHub-hosted runner.
+
+A plain rerun of the same job (no code change) then passed. So this was
+**not fixed**: `WaitForTracks`'s deadline was raised to 60s and then
+**reverted back to 30s** on the user's explicit instruction — he does not
+want a test whose failures are papered over by widening margins every time
+CI happens to be slow, without knowing why. The cold-container theory above
+is unconfirmed (never actually measured per-step timing on a failing RHEL
+run) and may not even be the real cause, given the rerun passed without any
+change at all.
+
+**Left open, to revisit:** this exact test (`SourceDisconnect_IsVisibleInTheFeed_
+AndAnObservationRestoresIt`, and by extension the other `WaitForTracks`-based
+cases in this file) is still capable of failing once and passing on an
+unmodified rerun. Before touching the margin again, get real evidence from a
+failing run: per-step timing/instrumentation in `WaitForTracks` (e.g. log how
+far the deadline was missed by, not just assert), and confirm whether it's
+genuinely wall-clock starvation (cold container) or a race (like the
+`DrainSynchronously` TOCTOU bug found earlier in this same file) that a
+longer timeout only hides more often than it triggers.
+
+**Requirement-to-test ledger (M1-E rework, R1 to R40 with R16a).** Test
+classes are under `Tests/Core/CoreTracks.Tests` unless noted; `Contracts`
+means `Tests/Shared/Contracts.Tests`.
+
+| Requirement | Covered by |
+|---|---|
+| R1 (invalid reports rejected, carried over from E1) | `Contracts/TrackObservationRulesTests.InvalidObservations_AreRejectedWithAReason`, `PositionedObservations_AreAccepted_IncludingBoundaryValues`; `TrackManagerTests.InvalidObservations_AreRejectedWithoutCreatingTracks` |
+| R2 (correlate or create) | `TrackManagerTests.UnknownSourceTrack_ThatCorrelatesWithNothing_CreatesATrackWithAGeneratedNumber`, `KnownSourceTrack_UpdatesItsContributionAndTheTrack` |
+| R3 (join the one gated candidate) | `TrackManagerTests.ANewSourceTrack_InsideTheGateOfExactlyOneCandidate_JoinsItAsAContribution` |
+| R4 (outside every gate creates a track) | `TrackManagerTests.ANewSourceTrack_OutsideEveryGate_CreatesANewTrack` |
+| R5 (dominance threshold) | `TrackManagerTests.ANewSourceTrack_WellInsideOneCandidateAndFarFromAnother_JoinsTheDominantOne`, `ANewSourceTrack_EquidistantBetweenTwoCandidates_IsAmbiguousAndCreatesANewTrack` |
+| R6 (never a second active/stale contribution from one source) | `TrackManagerTests.ATrack_NeverGainsASecondActiveContributionFromTheSameSource` |
+| R7 (automatic split) | `TrackManagerTests.ContributionsThatStopAgreeing_SplitAfterTheConfirmationCount_NotOnATransientDisagreement` |
+| R8 (Kalman fusion) | `TrackEstimatorTests.UpdatePosition_RepeatedConsistentMeasurements_ConvergeNearTheMeasurementWithShrinkingUncertainty`, `UpdatePosition_WeightsByUncertainty_ATighterMeasurementPullsTheEstimateHarder`; `TrackManagerTests.JoiningContributions_FuseIntoOneEstimate_WeightedByTheirReportedUncertainty` |
+| R9 (late reports) | `TrackEstimatorTests.UpdatePosition_ALateMeasurement_IsAppliedAtTheCurrentTime_WithoutBreakingTheFilter`, `Predict_ReturnsNothingNewWhenCalledAtOrBeforeTheCurrentTime_NeverRollingBackward`; `TrackManagerTests.ALateReportFromAnotherSource_IsAppliedWithoutBreakingTheTrack` |
+| R10 (duplicate/out-of-order, carried over from E3) | `TrackManagerTests.ExactRepeatIsDuplicate_AndOlderObservationIsOutOfOrder_WithoutChangingTheTrack` |
+| R11 (source descriptor registration) | `Contracts/TrackSourceDescriptorTests.ValidDescriptors_AreAccepted_WithAndWithoutTheOptionalBearingValues`, `Kinds_AreOpenStrings_SoOtherModulesCanDeclareTheirOwn`, `InvalidDescriptors_AreRefusedWithAReason`; `TrackManagerTests.RegisteredSourceTimings_ApplyImmediately_AndSupersedeTheUnregisteredDefaults`, `UnregisteredSource_UsesThePolicyDefaults` |
+| R12 (per-contribution ageing/state) | `TrackManagerTests.Track_IsActiveWhileAnyContributionIsActive_StaleWhenNoneAreActive_LostWhenAllAre` |
+| R13 (removal, number retirement) | `TrackManagerTests.ATrack_IsRemovedOnlyWhenItsLastContributionIsRemoved_AndKeepsItsNumberMeanwhile` |
+| R14 (disconnected source holds at Stale, carried over from E6) | `TrackManagerTests.DisconnectedSource_HoldsItsContributionsAtStale_NotLostOrRemoved_UntilItResumes` |
+| R15 (rejoin after Lost) | `TrackManagerTests.ANewSourceTrack_FromASourceWhoseEarlierContributionIsLost_MayRejoinTheSameTrack` |
+| R16a (position/polar/bearing acceptance, replaces R16) | `Contracts/TrackObservationRulesTests.RangeAndBearing_IsAcceptedWithTheOwnShipPosition_AndRelativeBearingsWithItsHeading`, `BearingOnly_IsAcceptedWithTheOwnShipPosition_AndRelativeBearingsWithItsHeading`; `Tests/Core/CoreRadar.Tests/RadarAdapterTests.WithoutAPoseOrWithARelativeBearingAndNoHeading_TheReportIsRejectedWithAProblem` |
+| R17 (operator merge) | `TrackManagerTests.Merge_KeepsTheOlderNumber_MovesContributions_AndLaterReportsUpdateTheSurvivor`, `Merge_FailsWithAReason_ForAnUnknownTrack` |
+| R18 (operator split) | `TrackManagerTests.Split_MovesOneContributionToANewTrack_AndReEstimatesBoth`, `Split_FailsWithAReason_WhenItWouldRemoveTheLastContribution`, `Split_FailsWithAReason_ForAnUnknownTrackOrContribution` |
+| R19 (capacity, carried over from E7) | `TrackManagerTests.NewTracksBeyondCapacityAreRejected_ButExistingContributionsStillUpdate` |
+| R20 (gapless feed/resync, carried over from E8) | `TrackManagerTests.Feed_OffersGaplessOrderedChanges_IncludingContributions_ThatConvergeWithTheSnapshot`, `Feed_RequiresResyncForUnknownEpochFutureRevisionOrTrimmedLog` |
+| R21 (checkpoint/restore, schema 2) | `TrackManagerTests.Checkpoint_PreservesContributionsDescriptorsAndSourceHealth_AndRestoredTracksStillCorrelate`, `Restore_RejectsUnsupportedOrCorruptState`; `TracksModuleTests.Module_CheckpointsItsTracks_AndRestoresThemAfterRestart` |
+| R22 (`TrackMotion.Predict`) | `Contracts/TrackMotionTests.Predict_MovesAlongTheCourseBySpeedTimesElapsedTime`, `Predict_AtTheMeasuredTimeOrWithoutSpeed_ReturnsTheTrackPosition`, `Predict_ReturnsNothing_WhenTheVelocityIsUnknown` |
+| R23 (background registration/retry; `Unavailable` before) | `TrackIngressTests.Register_WithAnInvalidDescriptor_ThrowsArgumentException`, `Register_WithAValidDescriptor_ReturnsASinkBoundToTheSource`, `Register_TheSameSourceIdAgain_ReplacesTheEarlierSink_WhichStopsAcceptingPublishes`; `Tests/Core/CoreAIS.Tests/AisAdapterTests.RunningAdapter_NormalizesAndForwardsReportsAndHealthToTracks`, `Sequence_IsCheckpointedAcrossRestarts_AndUnsupportedStateIsRejected`; `Tests/Core/CoreRadar.Tests/RadarAdapterTests.Adapter_IsUnavailableUntilStarted_ThenForwardsReportsAndHealth`, `Sequence_IsCheckpointedAcrossRestarts_AndUnsupportedStateIsRejected`; `TracksModuleTests.Publisher_Register_ValidatesTheDescriptor_AndReturnsASinkBoundToTheSource` |
+| R24 (source/Tracks independence; reload pick-up/drop) | `TracksModuleTests.TracksModule_RunsCorrectly_WithNoSourceEverRegistering`; `TrackPipelineIntegrationTests.AisAndRadar_OfOneVessel_FuseIntoOneTrack_WhichSurvivesReload_AndOutlivesEitherSource`, `WithoutTracks_TheTrackSensorsAreBlockedAndSonarIsUnaffected_ThenTheyRecover` |
+| R25 (AIS descriptor; Radar interval from rotation rate) | `Tests/Core/CoreRadar.Tests/RadarAdapterTests.DescriptorFor_DerivesTimingsFromTheRotationRate_ScalingUpOnlyWhenSlow`, `SetAntennaRotationRate_ReRegistersTheDefaultChannelsDescriptorWithTheNewInterval` |
+| R26 (bounded queue; Degraded/Healthy) | `TrackIngressTests.Publish_WhenASourcesQueueIsFull_DropsTheOldestReportAndCountsItInsteadOfBlocking`, `TrackSystemHealth_BecomesDegraded_WhileAQueueIsDropping_AndRecoversAfterTenSecondsWithoutDrops` |
+| R27 (consumers keep working against the reshaped `Track`) | `Contracts/TrackReplicaTests` (all 11 cases, notably `ABearingTrack_WithNoPositionAndANonNullBearing_FlowsThroughSnapshotAndChanges`); `Tests/Core/CoreDisplay.Tests/TrackLayerTests` (all); `TrackPipelineIntegrationTests.AisAndRadar_OfOneVessel_FuseIntoOneTrack_WhichSurvivesReload_AndOutlivesEitherSource` |
+| R28 (real-runtime end to end) | `TrackPipelineIntegrationTests.AisAndRadar_OfOneVessel_FuseIntoOneTrack_WhichSurvivesReload_AndOutlivesEitherSource`, `SourceDisconnect_IsVisibleInTheFeed_AndAnObservationRestoresIt`, `WithoutTracks_TheTrackSensorsAreBlockedAndSonarIsUnaffected_ThenTheyRecover` |
+| R29 (concurrent sources, no starvation) | `TrackIngressTests.ConcurrentSources_EachKeepTheirOwnOrder_AndNoneStarvesTheOthers` |
+| R30 (per-source statistics) | `TrackIngressTests.SourceStatistics_ExposeReceivedCreatedUpdatedRejectedDroppedQueueDepthAndLastRejection` |
+| R31 (throughput baseline, measurement not a gate) | `TrackIngressTests.ThroughputBaseline_IsMeasuredAtOneThousandTracks_AsAMeasurementNotAGate` |
+| R32 (radar position conversion from own-ship pose) | `Tests/Core/CoreRadar.Tests/RadarAdapterTests.TrueBearingWithPose_ProjectsAPositionAndKeepsTheMeasurement`, `RelativeBearing_UsesThePlatformHeading`, `WithoutAPoseOrWithARelativeBearingAndNoHeading_TheReportIsRejectedWithAProblem` |
+| R33 (Bearing track creation) | `TrackBearingTests.BearingOnlyReport_ThatCorrelatesWithNothing_CreatesABearingTrack`, `BearingTrack_AgesAndIsRemoved_LikeAnyOtherTrack_AndItsNumberIsRetired` |
+| R34 (bearing-to-point/hybrid correlation) | `TrackBearingTests.BearingReport_ThatCorrelatesWithExactlyOnePointTrack_JoinsItAsAContribution`, `BearingReport_AmbiguousBetweenTwoTracks_StaysStandalone_AndJoinsOnceTheAmbiguityClears`, `BearingTracks_NeverCorrelateWithEachOther` |
+| R35 (bearing refines only when AIS-only; splits off) | `TrackBearingTests.BearingContribution_RefinesThePoint_WhenTheOnlyActiveRangedContributionIsAis`, `BearingContribution_DoesNotRefineThePoint_WhileARadarContributionIsActive`, `BearingContribution_ThatStopsAgreeingForTheConfirmationCount_SplitsOffAsABearingTrack`; `TrackEstimatorTests.UpdateBearing_WithAnActiveRangedContribution_NudgesThePositionTowardTheBearingLine`, `UpdateBearing_WithoutAnActiveRangedContribution_RecordsTheBearingButNeverMovesThePosition` |
+| R36 (kind changes; hybrid extrapolation) | `TrackBearingTests.ABearingTrackWhoseSourceReportsARange_BecomesAPointTrack_KeepingItsNumber`, `ATrackWhoseRangedContributionsAllStop_WhileABearingContributionIsActive_BecomesHybrid`, `AHybridTrack_BecomesPointAgain_WhenARangedReportArrives`; `TrackEstimatorTests.Predict_WithoutMeasurements_GrowsPositionUncertaintyMonotonically_ForHybridExtrapolation`; `Contracts/TrackMotionTests.Predict_ReturnsNothing_ForABearingTrack` |
+| R37 (Display bearing line) | `Tests/Core/CoreDisplay.Tests/TrackLayerTests.BearingLines_IncludeBearingAndHybridTracksOnly_StyledByEachTracksOwnState` |
+| R38 (per-module hardware configuration file) | `Tests/Core/CoreRadar.Tests/RadarHardwareConfigurationTests.LoadChannels_WithNoConfigurationFile_ReturnsOneImplicitDefaultChannel` |
+| R39 (per-channel descriptor/source ID; rejects an unknown channel) | `Tests/Core/CoreRadar.Tests/RadarAdapterTests.SourceIdFor_NamesTheDefaultChannelPlainly_AndOthersWithTheirOwnChannelId`, `Submit_WithAChannelIdThatIsNotConfigured_IsRejectedAsInvalid` |
+| R40 (CoreRadar as the concrete multi-channel case) | `Tests/Core/CoreRadar.Tests/RadarHardwareConfigurationTests.LoadChannels_ParsesEachConfiguredChannel_WithItsOwnRotationRate`, `LoadChannels_RejectsDuplicateChannelIds_AsAMalformedFile`, `LoadChannels_RejectsANonPositiveRotationRate_AsAMalformedFile`; `RadarAdapterTests.SetAntennaRotationRate_OnAnUnconfiguredChannel_ThrowsArgumentException` |
+
+Every row above is a real, passing test as of the final run; none is
+against a stub. R32 predates this rework (carried over) and was not
+re-tested here beyond what `RadarAdapterTests` already covers.
+
+**Known gaps and follow-ups** (replaces the older
+[m1-e-track-pipeline.md](m1-e-track-pipeline.md)'s own "Known gaps and
+follow-ups", which this rework supersedes):
+
+- **Display does not draw the bearing line's pixels yet.** `ChartViewport.BearingLines`
+  (R37) exposes each Bearing/Hybrid track's geographic bearing-line data
+  (own-ship position, true bearing, state), real and tested, but there is
+  still no chart projection or canvas (M1-D) to actually draw it, or any
+  other track symbol, on screen. Same gap as the pre-rework pipeline, not
+  introduced here.
+- **R31's throughput baseline is a correctness test, not a timed
+  measurement.** `ThroughputBaseline_IsMeasuredAtOneThousandTracks_AsAMeasurementNotAGate`
+  proves 1,000 tracks' worth of reports are all processed correctly; it
+  does not yet record an actual reports-per-second rate as data. Turning it
+  into a real timed measurement is still open (noted since slice 4).
+- **The starting values in 21.4 are unvalidated against real sensor data.**
+  The 200 m join/split distance, the per-source queue sizing (AIS 1,000 and
+  radar 500 reports/s declared peaks), the process noise, the gate
+  chi-squares and the direction-finder bearing uncertainty are all
+  documented starting points the plan itself flags as "tuned later" once
+  real recordings or hardware are available (21.4's own "Note" column).
+  Nothing here changes that; this close-out does not attempt the tuning.
+- **No real device protocol or recorded-file replay transport exists.**
+  Adapters still accept reports pushed through their input feature only;
+  AIS NMEA/radar protocol selection (master plan section 9) and the
+  sensor-simulators feature (planned, tests not yet started) are what will
+  eventually feed them for real. Same gap as the pre-rework pipeline.
+- **A module's background pump/connector discards in-flight queued items
+  on stop**, same as the pre-rework relay: `TrackIngress.StopAsync` and
+  `TrackSourceConnector.StopAsync` cancel their loops immediately rather
+  than draining what is still queued. Acceptable per the plan's reload
+  design (21.7: "a generation reload stops every module first, so a sink
+  reference cannot outlive Tracks"), not revisited here.
+- **CoreSonar is still not a track source and has no hardware-configuration
+  file reader of its own** (deferred in 21.13: civilian `Core.Sonar` is not
+  a track source, T2). `CoreRadar`'s per-channel hardware-configuration
+  mechanism (R38 to R40) exists and is tested; giving `CoreSonar` the same
+  delivery mechanism for its own civilian channels (echo sounder, NDS
+  sonar) without wiring them to Tracks is still open, per R40's own text.
+- **EW/CMS bearing sources are out of scope.** Bearing association (R34)
+  sits behind an internal seam specifically so CmsTracks can supply a
+  different method for EW bearings later (CMS backlog); Core never
+  cross-fixes bearings from one ship, by design.
+- **M1-F (Navigation) has not started.** R32's radar-to-position conversion
+  and R37's bearing line both fall back to the sensor report's own-ship
+  pose until Navigation exists to supply a better one; this is expected,
+  not a defect.
+
+**Status.** M1-E rework (slices 1 to 6) is implemented, documented and
+passing on Windows locally, with the slice 5 PR's CI green on Windows, Arch
+Linux and RHEL-compatible containers. Presented to the user for review and
+acceptance; M1-E is complete once accepted and the PR is merged.

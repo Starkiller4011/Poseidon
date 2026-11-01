@@ -21,6 +21,14 @@ the eight core modules into the host output's `modules` directory; Core has no
 project reference to those implementations. CoreUI supplies the normal window,
 which hosts Display's chart viewport next to the module diagnostics; the host
 retains a small recovery window if CoreUI is missing or fails.
+
+CoreUI refuses to start without a `console.json` declaring which physical
+console layout (`Single` or `Dual`) it is running on — it never guesses one.
+Debug builds stage [`console.dev.json`](System/Core/CoreUI/console.dev.json)
+(`Single`) as that file purely as a development convenience; a real deployment
+is built/published as Release, which stages none, and must have its own
+`console.json` placed in the deployed `modules/CoreUI` directory for the
+target hardware before first launch.
 At startup, Core shows a borderless black splash with centered bold white
 "Poseidon" text while discovering and loading modules. The splash closes when
 initial loading completes; missing or failed CoreUI falls back to recovery.

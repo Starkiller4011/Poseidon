@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "Poseidon": {
+      "commandName": "Project"
+    },
+    "Poseidon (Debug logging)": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "POSEIDON_LOG_LEVEL": "Debug"
+      }
+    }
+  }
+}

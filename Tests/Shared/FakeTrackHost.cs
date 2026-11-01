@@ -2,41 +2,59 @@ using Poseidon.Core.Modules;
 
 namespace Poseidon.Tests.Shared;
 
-public sealed class RecordingIngestion : ITrackIngestion
+// A test double for the publisher side of the ingress design (21.9): stands in for TrackIngress so adapter
+// tests can exercise registration and publishing without a real TrackManager/queue.
+public sealed class RecordingPublisher : ITrackPublisher
 {
     private readonly object gate = new();
     private readonly List<string> calls = [];
     private readonly List<TrackObservation> observations = [];
+    private readonly Dictionary<string, TrackSourceDescriptor> lastDescriptors = new(StringComparer.Ordinal);
 
-    // Decides the result for each observation; by default every observation creates a track.
-    public Func<TrackObservation, ObservationResult> Respond { get; set; } =
-        o => new ObservationResult(ObservationOutcome.Created, "T-" + o.SourceTargetId);
+    // Decides the result for each observation; by default every observation is accepted.
+    public Func<TrackObservation, SubmissionResult> Respond { get; set; } = _ => SubmissionResult.Success;
 
     public IReadOnlyList<string> Calls { get { lock (gate) return [.. calls]; } }
 
     public IReadOnlyList<TrackObservation> Observations { get { lock (gate) return [.. observations]; } }
 
-    public ObservationResult Submit(TrackObservation observation) => SubmitBatch([observation])[0];
+    public TrackSourceDescriptor? LastDescriptor(string sourceId)
+    {
+        lock (gate)
+            return lastDescriptors.GetValueOrDefault(sourceId);
+    }
 
-    public IReadOnlyList<ObservationResult> SubmitBatch(IReadOnlyList<TrackObservation> batch)
+    public ITrackSink Register(TrackSourceDescriptor descriptor)
+    {
+        if (descriptor.Validate() is { } problem)
+            throw new ArgumentException(problem, nameof(descriptor));
+        lock (gate)
+            lastDescriptors[descriptor.SourceId] = descriptor;
+        return new RecordingSink(this, descriptor.SourceId);
+    }
+
+    private SubmissionResult Publish(TrackObservation observation)
     {
         lock (gate)
         {
-            var results = new List<ObservationResult>();
-            foreach (var observation in batch)
-            {
-                observations.Add(observation);
-                calls.Add($"obs:{observation.Sequence}");
-                results.Add(Respond(observation));
-            }
-            return results;
+            observations.Add(observation);
+            calls.Add($"obs:{observation.Sequence}");
         }
+        return Respond(observation);
     }
 
-    public void ReportSourceHealth(string sourceId, SourceHealth health, string? detail = null)
+    private void ReportHealth(string sourceId, SourceHealth health, string? detail)
     {
         lock (gate)
             calls.Add($"health:{sourceId}:{health}");
+    }
+
+    private void UpdateDescriptor(string sourceId, TrackSourceDescriptor descriptor)
+    {
+        if (descriptor.Validate() is { } problem)
+            throw new ArgumentException(problem, nameof(descriptor));
+        lock (gate)
+            lastDescriptors[sourceId] = descriptor;
     }
 
     public async Task WaitUntilAsync(Func<bool> condition, string description)
@@ -46,6 +64,37 @@ public sealed class RecordingIngestion : ITrackIngestion
         {
             if (DateTime.UtcNow >= deadline)
                 throw new TimeoutException("Timed out waiting for " + description);
+            await Task.Delay(10);
+        }
+    }
+
+    private sealed class RecordingSink(RecordingPublisher publisher, string sourceId) : ITrackSink
+    {
+        public SubmissionResult Publish(TrackObservation observation) => publisher.Publish(observation);
+
+        public void ReportHealth(SourceHealth health, string? detail = null) => publisher.ReportHealth(sourceId, health, detail);
+
+        public void UpdateDescriptor(TrackSourceDescriptor descriptor) => publisher.UpdateDescriptor(sourceId, descriptor);
+
+        public void Dispose()
+        {
+        }
+    }
+}
+
+// Registration now happens on a background task (21.3, R23), so a Submit right after StartAsync can race it;
+// this polls past that window without changing what a test asserts, the same way other adapter tests already
+// poll for delivery.
+public static class SubmissionPolling
+{
+    public static async Task<SubmissionResult> UntilRegisteredAsync(Func<SubmissionResult> submit)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            var result = submit();
+            if (result.Reason != RejectionReason.Unavailable || DateTime.UtcNow >= deadline)
+                return result;
             await Task.Delay(10);
         }
     }
@@ -87,7 +136,7 @@ public sealed class FakeTrackHost : IModuleHost
 {
     public static readonly AsyncLocal<bool> InvocationBlocked = new();
 
-    public RecordingIngestion Ingestion { get; } = new();
+    public RecordingPublisher Publisher { get; } = new();
 
     // While set and incomplete, calls wait as if a reload held the runtime gate.
     public Task? Block { get; set; }
@@ -120,7 +169,7 @@ public sealed class FakeTrackHost : IModuleHost
             throw Failure;
         if (featureId == TrackPoints.FeedFeatureId && Feed is TFeature feed)
             return action(feed);
-        if (featureId != TrackPoints.IngestionFeatureId || Ingestion is not TFeature feature)
+        if (featureId != TrackPoints.PublisherFeatureId || Publisher is not TFeature feature)
             throw new InvalidOperationException($"Feature is unavailable: {featureId}");
         return action(feature);
     }
