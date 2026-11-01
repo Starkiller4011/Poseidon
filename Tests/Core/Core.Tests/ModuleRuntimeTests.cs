@@ -262,13 +262,18 @@ public sealed partial class ModuleRuntimeTests
     private sealed class RuntimeTest : IAsyncDisposable
     {
         public string Root { get; } = Path.Combine(Path.GetTempPath(), "Poseidon.Tests", Guid.NewGuid().ToString("N"));
+        // M1-I: an isolated directory for ModuleRuntime's log file, so logging tests never race the
+        // shared test-output directory other tests' runs might also write to.
+        public string LogDirectory { get; } = Path.Combine(Path.GetTempPath(), "Poseidon.Tests", Guid.NewGuid().ToString("N"));
         public static ExtensionPoint TestPoint { get; } = new() { Id = "test.point", Version = "1.0.0" };
         public ModuleRuntime Runtime { get; }
 
         public RuntimeTest(TimeSpan? lifecycleTimeout = null)
         {
             Directory.CreateDirectory(Root);
-            Runtime = new ModuleRuntime(Root, lifecycleTimeout: lifecycleTimeout, additionalHostPoints: [TestPoint]);
+            Directory.CreateDirectory(LogDirectory);
+            Runtime = new ModuleRuntime(Root, lifecycleTimeout: lifecycleTimeout, additionalHostPoints: [TestPoint],
+                logDirectory: LogDirectory);
         }
 
         public Task<string> Read(string feature = "test.text") =>
@@ -280,7 +285,7 @@ public sealed partial class ModuleRuntimeTests
         public void Package(string id, string text, bool replaces = false, int priority = 0, string? dependency = null,
             bool failStart = false, bool failStop = false, string? folder = null,
             int contractVersion = 1, string version = "1.0.0", int startDelayMilliseconds = 0,
-            string feature = "test.text", string dependencyVersion = "1.0.0")
+            string feature = "test.text", string dependencyVersion = "1.0.0", bool useLogDuringStartAndStop = false)
         {
             var directory = Path.Combine(Root, folder ?? id);
             Directory.CreateDirectory(directory);
@@ -290,7 +295,8 @@ public sealed partial class ModuleRuntimeTests
             File.WriteAllText(Path.Combine(directory, "fixture.json"), JsonSerializer.Serialize(new
             {
                 Id = id, Text = text, FailStart = failStart, FailStop = failStop,
-                StartDelayMilliseconds = startDelayMilliseconds, FeatureId = feature
+                StartDelayMilliseconds = startDelayMilliseconds, FeatureId = feature,
+                UseLogDuringStartAndStop = useLogDuringStartAndStop
             }));
             var manifest = new ModuleManifest
             {
@@ -319,6 +325,8 @@ public sealed partial class ModuleRuntimeTests
             }
             if (Directory.Exists(Runtime.CacheDirectory))
                 Directory.Delete(Runtime.CacheDirectory, recursive: true);
+            if (Directory.Exists(LogDirectory))
+                Directory.Delete(LogDirectory, recursive: true);
         }
     }
 }

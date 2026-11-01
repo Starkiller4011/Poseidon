@@ -1,4 +1,5 @@
 using Poseidon.Core.Modules;
+using Poseidon.Core.Runtime.Logging;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Core.Tests")]
@@ -41,22 +42,40 @@ public sealed class ModuleRuntime : IModuleHost, IAsyncDisposable
     private readonly object shortcutGate = new();
     private readonly List<ShortcutRegistration> shortcuts = [];
     private string? activeShortcutScope;
+    // M1-I: where GetLog's shared sink writes its log file; defaults to a "logs" folder next to the
+    // host executable. logging.json itself (I3) is always read from AppContext.BaseDirectory directly
+    // (the same place console.json/sensors.json live next to their own module) — nothing currently
+    // needs that to be independently overridable the way the log file's own directory is for tests.
+    private readonly string logDirectory;
+    private readonly LogSink logSink;
     public RuntimeStatus Status => Volatile.Read(ref status);
     internal WeakReference[] RetiredContexts => retired.Select(r => r.Context).ToArray();
     internal string CacheDirectory => cacheDirectory;
+    internal string LogDirectory => logDirectory;
 
     public ModuleRuntime(string? modulesDirectory = null, Action? shutdown = null, TimeSpan? lifecycleTimeout = null,
-        IEnumerable<ExtensionPoint>? additionalHostPoints = null)
+        IEnumerable<ExtensionPoint>? additionalHostPoints = null, string? logDirectory = null)
     {
         hostPoints = [.. ExtensionPoints.Host, .. additionalHostPoints ?? []];
         this.modulesDirectory = Path.GetFullPath(
             modulesDirectory ?? Path.Combine(AppContext.BaseDirectory, "modules"));
         cacheDirectory = Path.Combine(Path.GetTempPath(), "Poseidon", Guid.NewGuid().ToString("N"));
+        this.logDirectory = Path.GetFullPath(
+            logDirectory ?? Path.Combine(AppContext.BaseDirectory, "logs"));
         this.shutdown = shutdown ?? (() => { });
         this.lifecycleTimeout = lifecycleTimeout ?? TimeSpan.FromSeconds(10);
         if (this.lifecycleTimeout <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(lifecycleTimeout));
+
+        var minimumLevel = LoggingConfiguration.ResolveMinimumLevel(
+            AppContext.BaseDirectory, Environment.GetEnvironmentVariable(LoggingConfiguration.EnvironmentVariable));
+        try { Directory.CreateDirectory(this.logDirectory); }
+        catch (IOException) { } catch (UnauthorizedAccessException) { }
+        logSink = new LogSink(minimumLevel,
+            Path.Combine(this.logDirectory, $"poseidon-{DateTime.UtcNow:yyyy-MM-dd}.log"));
     }
+
+    public ILog GetLog(string category) => new CategoryLog(category, logSink);
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -605,7 +624,9 @@ public sealed class ModuleRuntime : IModuleHost, IAsyncDisposable
             if (diagnostics.Count > 100)
                 diagnostics.RemoveAt(0);
         }
-        Console.Error.WriteLine(message);
+        // I8: routed through the same logging facility every module gets, instead of a direct
+        // Console.Error.WriteLine of its own; RuntimeStatus.Diagnostics above is unaffected (I9).
+        GetLog("Core").Warning(message);
     }
 
     private void Publish()
