@@ -13,6 +13,11 @@ package and exercise it.
 - [S-164 test data contract](s-164-data-contract.md) — S-101 exchange sets
   plus ECDIS loading/display scenarios, updates, and support files.
 
+These contracts are derived from test-corpus evidence, not normative
+specification text. The actual IHO specification documents, fetched
+directly and with provenance, live in
+[../Specifications/](../Specifications/README.md).
+
 ## Maintenance
 
 Record the dataset repository revision and product-specification/encoding
