@@ -26,6 +26,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Check out chart test-data submodules
+        # Only the three datasets the CoreCharts tests read; the other reference submodules are large and
+        # unused by tests. core.longpaths: the S-164 sub-group's paths exceed Windows' default limit.
+        run: >-
+          git -c core.longpaths=true submodule update --init --depth 1
+          Reference/Data/S-101-Test-Datasets Reference/Data/S-164-Sub-Group Reference/Data/s100tds
+
       - name: Install .NET 10 SDK
         uses: actions/setup-dotnet@v5
         with:
@@ -94,6 +101,12 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Check out chart test-data submodules
+        # Fetched on the runner; the container sees them through the mounted workspace.
+        run: >-
+          git submodule update --init --depth 1
+          Reference/Data/S-101-Test-Datasets Reference/Data/S-164-Sub-Group Reference/Data/s100tds
 
       - name: Validate in ${{ matrix.name }}
         run: >-

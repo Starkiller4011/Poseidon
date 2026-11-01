@@ -1,3 +1,45 @@
 [submodule "Reference/Data/S-101-Test-Datasets"]
 	path = Reference/Data/S-101-Test-Datasets
 	url = https://github.com/iho-ohi/S-101-Test-Datasets.git
+[submodule "Reference/Data/S-100-Standard-Development"]
+	path = Reference/Data/S-100-Standard-Development
+	url = https://github.com/iho-ohi/S-100-Standard-Development.git
+[submodule "Reference/Data/S-100-xmlbindings"]
+	path = Reference/Data/S-100-xmlbindings
+	url = https://github.com/iho-ohi/S-100-xmlbindings.git
+[submodule "Reference/Data/S-100-Validation-Checks"]
+	path = Reference/Data/S-100-Validation-Checks
+	url = https://github.com/iho-ohi/S-100-Validation-Checks.git
+[submodule "Reference/Data/S-101_Portrayal-Catalogue"]
+	path = Reference/Data/S-101_Portrayal-Catalogue
+	url = https://github.com/iho-ohi/S-101_Portrayal-Catalogue.git
+[submodule "Reference/Data/S-101-Validation"]
+	path = Reference/Data/S-101-Validation
+	url = https://github.com/iho-ohi/S-101-Validation.git
+[submodule "Reference/Data/S-164-Sub-Group"]
+	path = Reference/Data/S-164-Sub-Group
+	url = https://github.com/iho-ohi/S-164-Sub-Group.git
+[submodule "Reference/Data/NIWCSoftwareTestbed"]
+	path = Reference/Data/NIWCSoftwareTestbed
+	url = https://github.com/iho-ohi/NIWCSoftwareTestbed.git
+[submodule "Reference/Data/S100Infrastructure"]
+	path = Reference/Data/S100Infrastructure
+	url = https://github.com/iho-ohi/S100Infrastructure.git
+[submodule "Reference/Data/S100Resources"]
+	path = Reference/Data/S100Resources
+	url = https://github.com/iho-ohi/S100Resources.git
+[submodule "Reference/Data/S-100UML"]
+	path = Reference/Data/S-100UML
+	url = https://github.com/iho-ohi/S-100UML.git
+[submodule "Reference/Data/S-100WG"]
+	path = Reference/Data/S-100WG
+	url = https://github.com/iho-ohi/S-100WG.git
+[submodule "Reference/Data/ENCWG"]
+	path = Reference/Data/ENCWG
+	url = https://github.com/iho-ohi/ENCWG.git
+[submodule "Reference/Data/S100-Security-Scheme-PT"]
+	path = Reference/Data/S100-Security-Scheme-PT
+	url = https://github.com/iho-ohi/S100-Security-Scheme-PT.git
+[submodule "Reference/Data/s100tds"]
+	path = Reference/Data/s100tds
+	url = https://github.com/kusala9/s100tds.git

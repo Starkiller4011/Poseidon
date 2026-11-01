@@ -18,3 +18,36 @@
 *.exe
 *.pdb
 *.cache
+
+# UKHO-licensed S-100 trial data: local reference only, never committed
+/Reference/Data/S-101/
+/Reference/Data/S-102/
+/Reference/Data/S-104/
+/Reference/Data/S-111/
+/Reference/Data/S-124/
+
+# Reference/Data: downloaded reference material (IHO documents, schema archives, specifications)
+# stays local. Only the plan files, the Data project, the Specifications provenance note and the
+# submodules are committed; a new submodule needs its own line here.
+/Reference/Data/*
+!/Reference/Data/Plan-Memory/
+!/Reference/Data/Data.csproj
+!/Reference/Data/Program.cs
+!/Reference/Data/Specifications/
+/Reference/Data/Specifications/*
+!/Reference/Data/Specifications/README.md
+!/Reference/Data/ENCWG
+!/Reference/Data/NIWCSoftwareTestbed
+!/Reference/Data/S-100-Standard-Development
+!/Reference/Data/S-100-Validation-Checks
+!/Reference/Data/S-100-xmlbindings
+!/Reference/Data/S-100UML
+!/Reference/Data/S-100WG
+!/Reference/Data/S-101-Test-Datasets
+!/Reference/Data/S-101-Validation
+!/Reference/Data/S-101_Portrayal-Catalogue
+!/Reference/Data/S-164-Sub-Group
+!/Reference/Data/S100-Security-Scheme-PT
+!/Reference/Data/S100Infrastructure
+!/Reference/Data/S100Resources
+!/Reference/Data/s100tds
