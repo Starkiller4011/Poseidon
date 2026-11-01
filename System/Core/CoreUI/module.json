@@ -2,6 +2,24 @@
   "id": "Core.UI",
   "version": "0.1.0",
   "entryAssembly": "CoreUI.dll",
+  "provides": [
+    {
+      "id": "coreui.sidepanel", "version": "0.1.0", "cardinality": "multiple",
+      "contract": "Poseidon.Core.Modules.IUiSidePanel"
+    },
+    {
+      "id": "coreui.page", "version": "0.1.0", "cardinality": "multiple",
+      "contract": "Poseidon.Core.Modules.IUiPage"
+    },
+    {
+      "id": "coreui.page.panel", "version": "0.1.0", "cardinality": "multiple",
+      "contract": "Poseidon.Core.Modules.IUiPanel"
+    },
+    {
+      "id": "coreui.tid.page", "version": "0.1.0", "cardinality": "multiple",
+      "contract": "Poseidon.Core.Modules.ITidPage"
+    }
+  ],
   "contributions": [
     { "point": "shell.host", "id": "core.ui.shell", "version": "0.1.0" }
   ]

@@ -68,6 +68,46 @@ public interface IModuleHost
     Task<TResult> InvokeAsync<TFeature, TResult>(
         string featureId, Func<TFeature, TResult> action, CancellationToken cancellationToken = default)
         where TFeature : class;
+
+    // M1-H (H13 to H15): a Core-level keyboard-shortcut mechanism, not a CoreUI-owned extension point,
+    // so the registry and conflict-checking do not depend on which module happens to own windows. scope
+    // is an opaque string the registering module and whichever module calls SetActiveShortcutScope agree
+    // on by convention (CoreUI's convention is the active control page's PageId); null means the shortcut
+    // fires regardless of the active scope. A gesture that conflicts with an existing registration on
+    // overlapping scope (same scope, or either one null) throws immediately rather than silently
+    // overwriting it. Defaults throw, so an IModuleHost that does not implement shortcuts (every existing
+    // test double) keeps compiling unchanged; ModuleRuntime is the one real implementation.
+    IDisposable RegisterShortcut(UiKey key, UiKeyModifiers modifiers, string? scope, Action invoke)
+        => throw new NotImplementedException();
+
+    // Sets which scope's shortcuts DispatchShortcut currently reaches. CoreUI calls this whenever the
+    // operator switches the active control page.
+    void SetActiveShortcutScope(string? scope) => throw new NotImplementedException();
+
+    // Called by whichever module owns the window(s) receiving raw keyboard input (CoreUI, for every
+    // window it owns) once per key press. Invokes the registration matching the active scope, or a
+    // global (null-scope) registration, and returns whether anything was invoked.
+    bool DispatchShortcut(UiKey key, UiKeyModifiers modifiers) => throw new NotImplementedException();
+}
+
+// Framework-independent key representation (M1-H, H13 to H16): Poseidon.Contracts stays free of Avalonia
+// types (the same rule IChartViewport.CreateView follows by returning object). CoreUI is the one place
+// that maps these to the real Avalonia gesture.
+public enum UiKey
+{
+    A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+    D0, D1, D2, D3, D4, D5, D6, D7, D8, D9,
+    F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
+    Up, Down, Left, Right, Enter, Escape, Tab, Space, Delete, Backspace
+}
+
+[Flags]
+public enum UiKeyModifiers
+{
+    None = 0,
+    Shift = 1,
+    Control = 2,
+    Alt = 4
 }
 
 public sealed record ModuleDependency

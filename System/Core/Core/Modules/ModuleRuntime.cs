@@ -35,6 +35,12 @@ public sealed class ModuleRuntime : IModuleHost, IAsyncDisposable
     private int started;
     private int disposalRequested;
     private RuntimeStatus status = new(0, [], [], []);
+    // M1-H (H13 to H15): a Core-level keyboard-shortcut registry, independent of the module-reload
+    // machinery above; scope is an opaque string by convention (CoreUI's own convention is the active
+    // control page's PageId).
+    private readonly object shortcutGate = new();
+    private readonly List<ShortcutRegistration> shortcuts = [];
+    private string? activeShortcutScope;
     public RuntimeStatus Status => Volatile.Read(ref status);
     internal WeakReference[] RetiredContexts => retired.Select(r => r.Context).ToArray();
     internal string CacheDirectory => cacheDirectory;
@@ -145,6 +151,46 @@ public sealed class ModuleRuntime : IModuleHost, IAsyncDisposable
     // reacts to deployment changes so a broken package is not restarted every few seconds.
     public Task<bool> ReloadAsync(CancellationToken cancellationToken = default)
         => ReconcileAsync(force: true, cancellationToken);
+
+    // M1-H (H13 to H15): a gesture conflicts with an existing registration whenever both target the same
+    // key/modifiers and their scopes overlap (equal, or either one is the global null scope).
+    public IDisposable RegisterShortcut(UiKey key, UiKeyModifiers modifiers, string? scope, Action invoke)
+    {
+        lock (shortcutGate)
+        {
+            if (shortcuts.Any(s => s.Key == key && s.Modifiers == modifiers &&
+                                    (s.Scope == scope || s.Scope is null || scope is null)))
+                throw new InvalidOperationException(
+                    $"A shortcut for {modifiers}+{key} already exists in an overlapping scope.");
+            var registration = new ShortcutRegistration(key, modifiers, scope, invoke);
+            shortcuts.Add(registration);
+            return new ShortcutHandle(() => { lock (shortcutGate) shortcuts.Remove(registration); });
+        }
+    }
+
+    public void SetActiveShortcutScope(string? scope) => Volatile.Write(ref activeShortcutScope, scope);
+
+    public bool DispatchShortcut(UiKey key, UiKeyModifiers modifiers)
+    {
+        var scope = Volatile.Read(ref activeShortcutScope);
+        ShortcutRegistration? match;
+        lock (shortcutGate)
+        {
+            match = shortcuts.FirstOrDefault(s => s.Key == key && s.Modifiers == modifiers &&
+                                                   (s.Scope == scope || s.Scope is null));
+        }
+        if (match is null)
+            return false;
+        match.Invoke();
+        return true;
+    }
+
+    private sealed record ShortcutRegistration(UiKey Key, UiKeyModifiers Modifiers, string? Scope, Action Invoke);
+
+    private sealed class ShortcutHandle(Action onDispose) : IDisposable
+    {
+        public void Dispose() => onDispose();
+    }
 
     // Returns true only when every complete package that was discovered is running.
     private async Task<bool> ReconcileAsync(bool force, CancellationToken cancellationToken)

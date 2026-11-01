@@ -21,8 +21,11 @@ public sealed class TestApplication : Application
 public sealed class UiLifecycleTests
 {
     [AvaloniaFact]
-    public async Task Start_ShowsStatusAndBindsReloadExitCommands()
+    public async Task Start_ShowsGenerationInTheWindowTitle()
     {
+        // H12 superseded this test's original name and its status/Rescan/Exit assertions: CoreUI's shell
+        // no longer shows module/package/diagnostics status or reload/exit controls at all (see
+        // ShellChromeTests). The window-title generation indicator is unaffected and still covered here.
         var host = new TestHost();
         var module = new CoreUiModule();
         try
@@ -30,14 +33,6 @@ public sealed class UiLifecycleTests
             await module.StartAsync(host, null, CancellationToken.None);
             var window = Assert.IsType<Window>(module.ActiveWindow);
             Assert.Equal("Poseidon - generation 3", window.Title);
-            var text = string.Join("\n", window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
-            Assert.Contains("example.module", text);
-            Assert.Contains("example.feature -> example.module", text);
-            Assert.Contains("example diagnostic", text);
-            Click(window, "Rescan / reload modules");
-            Click(window, "Exit");
-            Assert.Equal(1, host.ReloadRequests);
-            Assert.Equal(1, host.ShutdownRequests);
         }
         finally { await module.StopAsync(CancellationToken.None); }
     }

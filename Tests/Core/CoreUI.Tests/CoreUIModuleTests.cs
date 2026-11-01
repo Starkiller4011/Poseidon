@@ -24,15 +24,4 @@ public sealed class CoreUIModuleTests
         Assert.IsAssignableFrom<IShell>(module.Features[contribution.Id]);
     }
 
-    [Theory]
-    [InlineData(PackageState.Active, null, "Active: Core.Tracks 0.0.1")]
-    [InlineData(PackageState.Blocked, "Requires X.", "Blocked: Core.Tracks 0.0.1 - Requires X.")]
-    public void PackageStatus_IsFormattedWithStateAndReason(PackageState state, string? detail, string expected)
-        => Assert.Equal(expected, CoreUiModule.FormatPackage(
-            new PackageStatus("modules/Tracks", "Core.Tracks", "0.0.1", state, detail)));
-
-    [Fact]
-    public void UnidentifiedPackage_IsFormattedByDirectoryName()
-        => Assert.Equal("Pending: Tracks - Waiting.", CoreUiModule.FormatPackage(
-            new PackageStatus(Path.Combine("modules", "Tracks"), null, null, PackageState.Pending, "Waiting.")));
 }
