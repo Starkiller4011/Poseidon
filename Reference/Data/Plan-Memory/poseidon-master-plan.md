@@ -9,13 +9,16 @@ own file under `features/`.
 
 Status: M1-A (host foundation) is complete for its automated cross-platform
 gate. M1-B (CoreUI/Display viewport boundary) is merged and passed
-cross-platform CI. M1-E (track pipeline) is implemented and verified on Windows
-as single-source tracks; its acceptance is on hold because the fusion
-requirements confirmed on 2026-10-26 replace parts of it. That rework's
-slices 1 to 6 are all accepted or done (slice 5 committed as `ee0e486`;
-slice 6's close-out presented 2026-10-31, with the PR's cross-platform CI
-green on Windows, Arch Linux and RHEL-compatible), pending the user's
-acceptance of slice 6 and the PR merge. This is not a certification claim.
+cross-platform CI. M1-E (track pipeline, fusion rework) is accepted and
+merged to `dev` (PR #7, merge commit `c01fd22`, 2026-11-01), superseding the
+single-source `m1-e-track-pipeline.md` build. M1-H (CoreUI extensibility,
+layout and input devices), a new milestone depending on M1-B and largely a
+refactor of M1-B's own CoreUI shell code, is implemented and passing as of
+2026-11-01, awaiting the user's acceptance to close out. M1-I (module
+logging), a new milestone depending on M1-A, has its plan ready for the
+Step 1 gate as of 2026-11-01. Sensor-simulators (plan approved 2026-10-27) is
+deferred by the user's explicit choice on 2026-11-01: no further work on it
+until picked back up. This is not a certification claim.
 
 ## How this documentation is organized
 
@@ -36,10 +39,12 @@ All files are in `Reference/Data/Plan-Memory/`.
 | [m1-a-host-and-module-loading.md](features/m1-a-host-and-module-loading.md) | M1-A | Done for the automated gate; native Linux desktop smoke tests deferred to M1-G |
 | [m1-b-ui-and-viewport.md](features/m1-b-ui-and-viewport.md) | M1-B | Done; merged after cross-platform CI |
 | [m1-c-chart-data-pipeline.md](features/m1-c-chart-data-pipeline.md) | M1-C | Not started; no plan approved |
-| [m1-e-track-pipeline.md](features/m1-e-track-pipeline.md) | M1-E (as built) | Implemented and verified on Windows; acceptance on hold pending the rework |
-| [m1-e-track-fusion.md](features/m1-e-track-fusion.md) | M1-E (rework) | Plan approved 2026-10-26 (bearing tracks in Core added) and amended 2026-10-28 (multi-sensor-channel modules, 21.13); slices 1 to 5 accepted and committed; slice 6 (close-out) done and presented 2026-10-31, PR CI green on all three platforms, pending acceptance and merge |
+| [m1-e-track-pipeline.md](features/m1-e-track-pipeline.md) | M1-E (as built) | Superseded by the rework below; kept for history only |
+| [m1-e-track-fusion.md](features/m1-e-track-fusion.md) | M1-E (rework) | Done. All 6 slices accepted; PR #7 merged to `dev` 2026-11-01 (`c01fd22`) with green cross-platform CI |
+| [m1-h-ui-extensibility.md](features/m1-h-ui-extensibility.md) | M1-H (new) | Plan and tests approved; Step 3 (code) done and passing (`dotnet test Poseidon.slnx -maxCpuCount:1` green), 2026-11-01. Awaiting the user's acceptance to close out the milestone |
+| [m1-i-module-logging.md](features/m1-i-module-logging.md) | M1-I (new) | Planning; a shared `ILog` logging facility for every module plus the host, a `logging.json` debug-level config flag overridable by a `POSEIDON_LOG_LEVEL` environment variable, and two Visual Studio run profiles (Normal/Debug) for it; plan ready for the Step 1 gate as of 2026-11-01 |
 | [cms-backlog.md](features/cms-backlog.md) | CMS | Documentation only; deferred until the civilian side is complete |
-| [sensor-simulators.md](features/sensor-simulators.md) | Supporting infrastructure | Plan approved 2026-10-27; tests may proceed alongside M1-E, code waits until M1-E is done |
+| [sensor-simulators.md](features/sensor-simulators.md) | Supporting infrastructure | Plan approved 2026-10-27; deferred by the user on 2026-11-01 — paused, not started, pick up later |
 
 M1-D, M1-F and M1-G get their feature files when their planning starts.
 
@@ -260,15 +265,19 @@ working on M1. Each work package is a feature (or several) developed under
 | Work package | Prerequisite | Deliverables and exit evidence | Status |
 |---|---|---|---|
 | M1-A: Host and contracts | None | Restore shared types; keep Core as executable and modules as libraries; hot reload/overrides and repeatable packaging; no-module startup; replacement/removal/rollback tests on Windows, Arch Linux, and RHEL; independent core-module tests | Done for the automated gate |
-| M1-B: UI and viewport | M1-A | CoreUI owns normal UI; Display contributes empty viewport and layer API; UI/Display reload without restarting Core; diagnostics/recovery remain available | Done |
+| M1-B: UI and viewport | M1-A | CoreUI owns normal UI; Display contributes empty viewport and layer API; UI/Display reload without restarting Core; diagnostics/recovery remain available | Done (its diagnostics/reload/exit panel is later removed from CoreUI's shell entirely by M1-H, which also refactors most of its layout code) |
 | M1-C: Chart-data pipeline | M1-A | Audit specifications/resources, pin fixture versions; Charts decodes a real base cell; verify metadata, attributes, topology and malformed-input diagnostics | Not started |
 | M1-D: Integrated chart view | M1-B, M1-C | Display draws Charts data; pan/zoom, locked base, overlays, contour slider and feature inspection; demonstrate Charts/Display provider replacement | Not started |
-| M1-E: Track pipeline | M1-A; UI integration needs M1-B | Tracks contracts/manager plus AIS/Radar adapter boundaries (Sonar is not a track source); recorded/simulated observations produce managed tracks and Display updates; lifecycle, resync and reload tests; fusion, per-source timings and queue ingress (rework) | Fusion rework: all 6 slices done; close-out presented 2026-10-31, pending acceptance and PR merge |
+| M1-E: Track pipeline | M1-A; UI integration needs M1-B | Tracks contracts/manager plus AIS/Radar adapter boundaries (Sonar is not a track source); recorded/simulated observations produce managed tracks and Display updates; lifecycle, resync and reload tests; fusion, per-source timings and queue ingress (rework) | Done. Fusion rework merged 2026-11-01 (PR #7, `c01fd22`) |
 | M1-F: Navigation functions | M1-E | Own-ship state and tested CPA/TCPA; Display annotations; unavailable/stale/degenerate-motion behavior is explicit; a fault when own-ship position or heading is unavailable | Not started |
-| M1-G: Integration gate | M1-D, M1-E, M1-F | Windows/Arch Linux/RHEL publish and native desktop smoke tests (RHEL with SELinux enforcing); actual civilian module suites; dependency, override and hot-reload failure tests across the integrated application | Not started |
+| M1-G: Integration gate | M1-D, M1-E, M1-F, M1-H | Windows/Arch Linux/RHEL publish and native desktop smoke tests (RHEL with SELinux enforcing); actual civilian module suites; dependency, override and hot-reload failure tests across the integrated application | Not started |
+| M1-H: CoreUI extensibility, layout and input devices | M1-B | CoreUI's chart+side-panel area (always visible) and a separate paged control-pages area, hosted per a single-/dual-display hardware-configuration file; a Core-level keyboard-shortcut mechanism; CoreUI's ownership of the TID touch panel for buttonology; largely a refactor of M1-B's own CoreUI shell code | Implemented and passing (`dotnet test Poseidon.slnx -maxCpuCount:1` green), 2026-11-01; awaiting the user's acceptance |
+| M1-I: Module logging | M1-A | A shared `ILog` logging facility every module (and the host itself) can use, including from `StartAsync`/`StopAsync`; console and file output; a `logging.json` config flag raising the minimum level to `Debug`, overridable by `POSEIDON_LOG_LEVEL`; two Visual Studio run profiles for it | Planning; plan ready for the Step 1 gate as of 2026-11-01 |
 
-M1-C and M1-E can proceed independently after M1-A. The M1-G gate requires no
-CMS binaries. Device-specific protocols and hardware integrations are selected
+M1-C and M1-E can proceed independently after M1-A. M1-H needs only M1-B and
+can proceed independently of M1-C/D/E/F too. M1-I needs only M1-A and can
+proceed independently of everything else. The M1-G gate requires no CMS
+binaries. Device-specific protocols and hardware integrations are selected
 separately; initial simulated adapters do not imply production device support.
 M1 is a development core application, not certified ECDIS.
 

@@ -23,6 +23,10 @@
           CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\..\System\Core\CoreAIS\module.json" Link="packages\CoreAIS\module.json"
           CopyToOutputDirectory="PreserveNewest" />
+    <!-- Default console.json for CoreUiModule's own assembly directory (shared by every fake-host unit
+         test in this project); tests that need Dual mode specifically write their own into an isolated
+         DeployedModules package directory instead, to avoid racing this shared default. -->
+    <None Include="console.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Real CoreUI/Display/Tracks/AIS packages for runtime integration tests; none but CoreUI is a compile-time reference. -->
