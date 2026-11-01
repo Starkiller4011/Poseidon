@@ -28,6 +28,7 @@ public static class ChartDiagnosticCodes
     public const string UpdateEditionNewer = "update-edition-newer";
     public const string UpdateEditionOlder = "update-edition-older";
     public const string DatasetCancelled = "dataset-cancelled";
+    public const string AlreadyInstalled = "already-installed";
     public const string BaseNotInstalled = "base-not-installed";
     public const string StoreUnreadable = "store-unreadable";
     public const string SupportFileMissing = "support-file-missing";

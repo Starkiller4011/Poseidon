@@ -29,6 +29,16 @@ Debug builds stage [`console.dev.json`](System/Core/CoreUI/console.dev.json)
 is built/published as Release, which stages none, and must have its own
 `console.json` placed in the deployed `modules/CoreUI` directory for the
 target hardware before first launch.
+
+Charts reach the chart library through an inbox: when Charts starts, it
+imports every exchange set (a folder holding `CATALOG.XML`) under
+`charts/inbox` beside the host executable, and remembers each one so it is
+imported again only if it changes. The store (`charts/charts.db`) and the
+inbox record (`charts/inbox.json`) live alongside. Debug builds stage
+development data into that inbox: the released S-164 PowerUp set from the
+`S-164-Sub-Group` submodule, plus the UKHO and SHOM S-101 sets under
+`Reference/Data/S-101` where that licensed, git-ignored data is present on
+the machine. Release builds stage nothing.
 At startup, Core shows a borderless black splash with centered bold white
 "Poseidon" text while discovering and loading modules. The splash closes when
 initial loading completes; missing or failed CoreUI falls back to recovery.
