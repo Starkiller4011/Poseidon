@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using Poseidon.Core.Modules;
 using Poseidon.Core.Runtime;
 
 namespace Poseidon;
@@ -46,7 +47,7 @@ public partial class App : Application
         try { await splash!.ShowWhileLoadingAsync(() => Task.Run(() => runtime!.StartAsync())); }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Cannot start module runtime: {ex}");
+            runtime!.GetLog("Core").Error("Cannot start module runtime", ex);
             failure = ex.Message;
         }
         if (exiting)
@@ -68,7 +69,7 @@ public partial class App : Application
             if (runtime is not null)
                 await runtime.DisposeAsync();
         }
-        catch (Exception ex) { Console.Error.WriteLine($"Module shutdown failed: {ex}"); }
+        catch (Exception ex) { runtime?.GetLog("Core").Error("Module shutdown failed", ex); }
         finally
         {
             recovery?.Stop();

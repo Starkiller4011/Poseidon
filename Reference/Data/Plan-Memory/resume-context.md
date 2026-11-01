@@ -1,6 +1,6 @@
 # Resume context
 
-Updated: 2026-11-01 (M1-E fusion rework accepted and merged, PR #7/`c01fd22`; sensor-simulators deferred; M1-H code done and passing, awaiting acceptance; M1-I plan approved, Step 2 tests written and confirmed failing, awaiting test-gate approval)
+Updated: 2026-11-01 (M1-E fusion rework accepted and merged, PR #7/`c01fd22`; sensor-simulators deferred; M1-H code done and passing, awaiting acceptance; M1-I code done and passing, awaiting acceptance)
 
 Read this at the start of every session, then
 [development-workflow.md](development-workflow.md), then
@@ -110,19 +110,20 @@ without editing the file.
 | Step | State | Detail |
 |---|---|---|
 | 1. Plan | Done, approved by the user on 2026-11-01 | Custom `ILog` (cross-platform compatibility), console+file output, `logging.json`, plus the user's follow-on ask for VS run-profile switching (answered with `POSEIDON_LOG_LEVEL` + `launchSettings.json`) |
-| 2. Tests | Done, presented for the gate | I1 to I12 all covered (18 new Core.Tests cases; I9 by regression guard, I12 by manual verification); every new test confirmed failing for the right reason |
-| 3. Code | Not started | Waits on the Step 2 gate |
+| 2. Tests | Done, approved by the user on 2026-11-01 | I1 to I12 all covered (18 new Core.Tests cases; I9 by regression guard, I12 by manual verification) |
+| 3. Code | Done, presented for the gate | All 12 requirements implemented; `dotnet test Poseidon.slnx -maxCpuCount:1` fully green (every project "Test Run Successful"), 2026-11-01 |
 
-Progress: tests written, run, and confirmed failing for the right reason.
-`Core.Tests` is the only project with failures (141 cases: 123 pre-existing
-unaffected, 18 new all failing as expected); the rest of the solution
-(`dotnet test Poseidon.slnx -maxCpuCount:1`) is green. The shared
-`FixtureModule`/`RuntimeTest` test fixture gained a `UseLogDuringStartAndStop`
-flag and a `LogDirectory`, used to exercise `GetLog` through a real
-module's lifecycle methods — additive, no other test broke. Full detail,
-including the requirement-to-test ledger, is in the feature file's Step 2
-entry, not repeated here. Gate: waiting for the user's explicit order to
-continue to Step 3 (code).
+Progress: `LoggingConfiguration.ResolveMinimumLevel`, `LogSink.Write`,
+`ModuleRuntime.GetLog`, `Report` (now `GetLog("Core").Warning(...)`
+instead of direct `Console.Error`) and `App.axaml.cs`'s two failure paths
+are all implemented for real; `System/Core/Core/Properties/launchSettings.json`
+adds the "Poseidon"/"Poseidon (Debug logging)" run profiles. One
+deliberate, in-scope behavior note: `Report`'s diagnostics now go to
+`Console.Out` via the shared sink instead of `Console.Error`, since the
+facility writes every level to the same stream by design — not an
+accidental regression. Full detail, including the requirement-to-test
+ledger, is in the feature file's Step 3 entry, not repeated here. Gate:
+waiting for the user's acceptance to close out M1-I.
 
 [M1-E track fusion and queue ingress](features/m1-e-track-fusion.md)
 (requirements R1 to R40 with R16a) is done: all 6 slices accepted, PR #7
@@ -134,7 +135,28 @@ is plan-approved (2026-10-27) but deferred by the user's explicit choice on
 
 ## Last changes made
 
-M1-I Step 2 (tests): wrote and ran the tests for all 12 requirements
+M1-I Step 3 (code): implemented all 12 requirements (I1 to I12) for real
+on branch `feature/core-track-system`, not committed yet.
+`LoggingConfiguration.ResolveMinimumLevel` checks `POSEIDON_LOG_LEVEL`
+first, then `logging.json` (read from `AppContext.BaseDirectory`), then
+falls back to `Information`; `LogSink.Write` filters by level, formats
+timestamp/category/level/message(+exception), writes to console then a
+file, and swallows file-write failures. `ModuleRuntime` builds one shared
+`LogSink` at construction (log file at `logDirectory/poseidon-<date>.log`,
+`logDirectory` defaulting to a `logs` folder next to the host executable)
+and implements `GetLog` for real; `Report` now calls
+`GetLog("Core").Warning(...)` instead of `Console.Error.WriteLine`
+directly, and `App.axaml.cs`'s two failure paths now call
+`GetLog("Core").Error(...)` the same way (verified by reading the diff;
+no test harness exists for the `App` class). New
+`System/Core/Core/Properties/launchSettings.json` with "Poseidon" and
+"Poseidon (Debug logging)" profiles. `dotnet build Poseidon.slnx` and
+`dotnet build Core.Application.proj`: no warnings or errors. All 18 new
+`Core.Tests` cases now pass; the full `Core.Tests` project is 141/141;
+`dotnet test Poseidon.slnx -maxCpuCount:1`: every project in the solution
+reports "Test Run Successful", zero failures anywhere.
+
+Earlier in the same session: M1-I Step 2 (tests): wrote and ran the tests for all 12 requirements
 (I1 to I12) on branch `feature/core-track-system`, confirmed failing for
 the right reason, not committed yet. New files: `LoggingConfigurationTests.cs`,
 `LogSinkTests.cs`, `ModuleLoggingTests.cs` (18 cases total) in `Core.Tests`.
@@ -310,9 +332,9 @@ Earlier (before this session; slice 1, now merged):
    to close out the milestone; the full passing run and the bug found
    along the way are recorded and waiting for review. Nothing is
    committed yet.
-2. **Get the user's approval of [M1-I's tests](features/m1-i-module-logging.md)**
-   to move past the Step 2 gate into Step 3 (code); the requirement-to-test
-   ledger and the failing run are recorded and waiting for review.
+2. **Get the user's acceptance of [M1-I's code](features/m1-i-module-logging.md)**
+   to close out the milestone; the full passing run is recorded and
+   waiting for review. Nothing is committed yet.
 
 Everything else waiting, unblocked by anything above and not in
 competition with it, per the master plan's milestone table:

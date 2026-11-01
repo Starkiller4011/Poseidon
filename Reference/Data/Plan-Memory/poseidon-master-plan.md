@@ -15,8 +15,8 @@ single-source `m1-e-track-pipeline.md` build. M1-H (CoreUI extensibility,
 layout and input devices), a new milestone depending on M1-B and largely a
 refactor of M1-B's own CoreUI shell code, is implemented and passing as of
 2026-11-01, awaiting the user's acceptance to close out. M1-I (module
-logging), a new milestone depending on M1-A, has its plan ready for the
-Step 1 gate as of 2026-11-01. Sensor-simulators (plan approved 2026-10-27) is
+logging), a new milestone depending on M1-A, is implemented and passing
+as of 2026-11-01, awaiting the user's acceptance to close out. Sensor-simulators (plan approved 2026-10-27) is
 deferred by the user's explicit choice on 2026-11-01: no further work on it
 until picked back up. This is not a certification claim.
 
@@ -42,7 +42,7 @@ All files are in `Reference/Data/Plan-Memory/`.
 | [m1-e-track-pipeline.md](features/m1-e-track-pipeline.md) | M1-E (as built) | Superseded by the rework below; kept for history only |
 | [m1-e-track-fusion.md](features/m1-e-track-fusion.md) | M1-E (rework) | Done. All 6 slices accepted; PR #7 merged to `dev` 2026-11-01 (`c01fd22`) with green cross-platform CI |
 | [m1-h-ui-extensibility.md](features/m1-h-ui-extensibility.md) | M1-H (new) | Plan and tests approved; Step 3 (code) done and passing (`dotnet test Poseidon.slnx -maxCpuCount:1` green), 2026-11-01. Awaiting the user's acceptance to close out the milestone |
-| [m1-i-module-logging.md](features/m1-i-module-logging.md) | M1-I (new) | Planning; a shared `ILog` logging facility for every module plus the host, a `logging.json` debug-level config flag overridable by a `POSEIDON_LOG_LEVEL` environment variable, and two Visual Studio run profiles (Normal/Debug) for it; plan ready for the Step 1 gate as of 2026-11-01 |
+| [m1-i-module-logging.md](features/m1-i-module-logging.md) | M1-I (new) | Plan and tests approved; Step 3 (code) done and passing (`dotnet test Poseidon.slnx -maxCpuCount:1` fully green), 2026-11-01. Awaiting the user's acceptance to close out the milestone |
 | [cms-backlog.md](features/cms-backlog.md) | CMS | Documentation only; deferred until the civilian side is complete |
 | [sensor-simulators.md](features/sensor-simulators.md) | Supporting infrastructure | Plan approved 2026-10-27; deferred by the user on 2026-11-01 — paused, not started, pick up later |
 
@@ -272,7 +272,7 @@ working on M1. Each work package is a feature (or several) developed under
 | M1-F: Navigation functions | M1-E | Own-ship state and tested CPA/TCPA; Display annotations; unavailable/stale/degenerate-motion behavior is explicit; a fault when own-ship position or heading is unavailable | Not started |
 | M1-G: Integration gate | M1-D, M1-E, M1-F, M1-H | Windows/Arch Linux/RHEL publish and native desktop smoke tests (RHEL with SELinux enforcing); actual civilian module suites; dependency, override and hot-reload failure tests across the integrated application | Not started |
 | M1-H: CoreUI extensibility, layout and input devices | M1-B | CoreUI's chart+side-panel area (always visible) and a separate paged control-pages area, hosted per a single-/dual-display hardware-configuration file; a Core-level keyboard-shortcut mechanism; CoreUI's ownership of the TID touch panel for buttonology; largely a refactor of M1-B's own CoreUI shell code | Implemented and passing (`dotnet test Poseidon.slnx -maxCpuCount:1` green), 2026-11-01; awaiting the user's acceptance |
-| M1-I: Module logging | M1-A | A shared `ILog` logging facility every module (and the host itself) can use, including from `StartAsync`/`StopAsync`; console and file output; a `logging.json` config flag raising the minimum level to `Debug`, overridable by `POSEIDON_LOG_LEVEL`; two Visual Studio run profiles for it | Planning; plan ready for the Step 1 gate as of 2026-11-01 |
+| M1-I: Module logging | M1-A | A shared `ILog` logging facility every module (and the host itself) can use, including from `StartAsync`/`StopAsync`; console and file output; a `logging.json` config flag raising the minimum level to `Debug`, overridable by `POSEIDON_LOG_LEVEL`; two Visual Studio run profiles for it | Implemented and passing (`dotnet test Poseidon.slnx -maxCpuCount:1` fully green), 2026-11-01; awaiting the user's acceptance |
 
 M1-C and M1-E can proceed independently after M1-A. M1-H needs only M1-B and
 can proceed independently of M1-C/D/E/F too. M1-I needs only M1-A and can
