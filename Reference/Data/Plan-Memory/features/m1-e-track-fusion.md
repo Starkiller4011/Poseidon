@@ -4,8 +4,11 @@ Milestone: M1-E rework (prerequisite: the M1-E track pipeline as built)
 Status: **Plan approved by the user on 2026-10-26, including the amendment
 moving bearing tracks into CoreTracks (21.12, R16a and R33 to R37), and
 amended again on 2026-10-28 for multi-sensor-channel modules (21.13, D10).
-Slices 1 to 5 are accepted (slice 5 on 2026-10-29). Slice 6 (close-out) has
-not started.** An earlier
+Slices 1 to 5 are accepted (slice 5 on 2026-10-29) and committed
+(`ee0e486`). Slice 6 (close-out) is done — full solution run, the
+consolidated requirement-to-test ledger and known limits, and the slice 5
+PR's cross-platform CI all green — and presented to the user for review and
+acceptance.** An earlier
 implementation attempt of the whole rework was reverted at the user's
 request. `CoreAIS` and `CoreRadar` are rewired onto `TrackSourceConnector`/
 `ITrackPublisher` (real registration, retried in the background until
@@ -1635,7 +1638,125 @@ row, zero failures (previously reproduced in roughly 1 of every 3 to 5 runs
 before this fix), plus a full `dotnet test Poseidon.slnx -maxCpuCount:1`
 run, zero failures, no MSB4181.
 
-Not yet done: pushing this fix and confirming it on Windows, Arch Linux and
-RHEL-compatible CI (only run locally so far in this pass). Slice 6's own
-close-out (full solution run, ledger rows, documentation of tuning values
-and known limits, then PR/CI) has otherwise not started.
+Pushed and confirmed: CI passed on all three platforms (Windows, Arch
+Linux, RHEL-compatible) on the next run. The slice 5 PR's CI is green.
+
+### Slice 6 (close-out): requirement ledger, known limits and final verification, 2026-10-31
+
+Per 21.5 item 6: full solution run, ledger rows, documentation of tuning
+values and known limits, then PR and cross-platform CI (the PR's CI is
+already green, from the fix pass above).
+
+**Final passing run (2026-10-31, Windows):** `dotnet build Core.Application.proj`:
+no warnings or errors. `dotnet test Poseidon.slnx -maxCpuCount:1`: zero
+failures across every project, run twice (once directly, once via each
+aggregate's nested rerun), including both aggregates and every CMS smoke
+project. Unique test count across the whole solution: 430 (Contracts.Tests
+94, Core.Tests 116, CoreTracks.Tests 74, CoreAIS.Tests 30, CoreRadar.Tests
+34, CoreUI.Tests 28, CoreDisplay.Tests 19, CoreCharts.Tests 8,
+CoreNavigation.Tests 8, CoreSonar.Tests 8, nine CMS smoke projects at 1
+each, Civilian.Tests 1, Military.Tests 1).
+
+**Requirement-to-test ledger (M1-E rework, R1 to R40 with R16a).** Test
+classes are under `Tests/Core/CoreTracks.Tests` unless noted; `Contracts`
+means `Tests/Shared/Contracts.Tests`.
+
+| Requirement | Covered by |
+|---|---|
+| R1 (invalid reports rejected, carried over from E1) | `Contracts/TrackObservationRulesTests.InvalidObservations_AreRejectedWithAReason`, `PositionedObservations_AreAccepted_IncludingBoundaryValues`; `TrackManagerTests.InvalidObservations_AreRejectedWithoutCreatingTracks` |
+| R2 (correlate or create) | `TrackManagerTests.UnknownSourceTrack_ThatCorrelatesWithNothing_CreatesATrackWithAGeneratedNumber`, `KnownSourceTrack_UpdatesItsContributionAndTheTrack` |
+| R3 (join the one gated candidate) | `TrackManagerTests.ANewSourceTrack_InsideTheGateOfExactlyOneCandidate_JoinsItAsAContribution` |
+| R4 (outside every gate creates a track) | `TrackManagerTests.ANewSourceTrack_OutsideEveryGate_CreatesANewTrack` |
+| R5 (dominance threshold) | `TrackManagerTests.ANewSourceTrack_WellInsideOneCandidateAndFarFromAnother_JoinsTheDominantOne`, `ANewSourceTrack_EquidistantBetweenTwoCandidates_IsAmbiguousAndCreatesANewTrack` |
+| R6 (never a second active/stale contribution from one source) | `TrackManagerTests.ATrack_NeverGainsASecondActiveContributionFromTheSameSource` |
+| R7 (automatic split) | `TrackManagerTests.ContributionsThatStopAgreeing_SplitAfterTheConfirmationCount_NotOnATransientDisagreement` |
+| R8 (Kalman fusion) | `TrackEstimatorTests.UpdatePosition_RepeatedConsistentMeasurements_ConvergeNearTheMeasurementWithShrinkingUncertainty`, `UpdatePosition_WeightsByUncertainty_ATighterMeasurementPullsTheEstimateHarder`; `TrackManagerTests.JoiningContributions_FuseIntoOneEstimate_WeightedByTheirReportedUncertainty` |
+| R9 (late reports) | `TrackEstimatorTests.UpdatePosition_ALateMeasurement_IsAppliedAtTheCurrentTime_WithoutBreakingTheFilter`, `Predict_ReturnsNothingNewWhenCalledAtOrBeforeTheCurrentTime_NeverRollingBackward`; `TrackManagerTests.ALateReportFromAnotherSource_IsAppliedWithoutBreakingTheTrack` |
+| R10 (duplicate/out-of-order, carried over from E3) | `TrackManagerTests.ExactRepeatIsDuplicate_AndOlderObservationIsOutOfOrder_WithoutChangingTheTrack` |
+| R11 (source descriptor registration) | `Contracts/TrackSourceDescriptorTests.ValidDescriptors_AreAccepted_WithAndWithoutTheOptionalBearingValues`, `Kinds_AreOpenStrings_SoOtherModulesCanDeclareTheirOwn`, `InvalidDescriptors_AreRefusedWithAReason`; `TrackManagerTests.RegisteredSourceTimings_ApplyImmediately_AndSupersedeTheUnregisteredDefaults`, `UnregisteredSource_UsesThePolicyDefaults` |
+| R12 (per-contribution ageing/state) | `TrackManagerTests.Track_IsActiveWhileAnyContributionIsActive_StaleWhenNoneAreActive_LostWhenAllAre` |
+| R13 (removal, number retirement) | `TrackManagerTests.ATrack_IsRemovedOnlyWhenItsLastContributionIsRemoved_AndKeepsItsNumberMeanwhile` |
+| R14 (disconnected source holds at Stale, carried over from E6) | `TrackManagerTests.DisconnectedSource_HoldsItsContributionsAtStale_NotLostOrRemoved_UntilItResumes` |
+| R15 (rejoin after Lost) | `TrackManagerTests.ANewSourceTrack_FromASourceWhoseEarlierContributionIsLost_MayRejoinTheSameTrack` |
+| R16a (position/polar/bearing acceptance, replaces R16) | `Contracts/TrackObservationRulesTests.RangeAndBearing_IsAcceptedWithTheOwnShipPosition_AndRelativeBearingsWithItsHeading`, `BearingOnly_IsAcceptedWithTheOwnShipPosition_AndRelativeBearingsWithItsHeading`; `Tests/Core/CoreRadar.Tests/RadarAdapterTests.WithoutAPoseOrWithARelativeBearingAndNoHeading_TheReportIsRejectedWithAProblem` |
+| R17 (operator merge) | `TrackManagerTests.Merge_KeepsTheOlderNumber_MovesContributions_AndLaterReportsUpdateTheSurvivor`, `Merge_FailsWithAReason_ForAnUnknownTrack` |
+| R18 (operator split) | `TrackManagerTests.Split_MovesOneContributionToANewTrack_AndReEstimatesBoth`, `Split_FailsWithAReason_WhenItWouldRemoveTheLastContribution`, `Split_FailsWithAReason_ForAnUnknownTrackOrContribution` |
+| R19 (capacity, carried over from E7) | `TrackManagerTests.NewTracksBeyondCapacityAreRejected_ButExistingContributionsStillUpdate` |
+| R20 (gapless feed/resync, carried over from E8) | `TrackManagerTests.Feed_OffersGaplessOrderedChanges_IncludingContributions_ThatConvergeWithTheSnapshot`, `Feed_RequiresResyncForUnknownEpochFutureRevisionOrTrimmedLog` |
+| R21 (checkpoint/restore, schema 2) | `TrackManagerTests.Checkpoint_PreservesContributionsDescriptorsAndSourceHealth_AndRestoredTracksStillCorrelate`, `Restore_RejectsUnsupportedOrCorruptState`; `TracksModuleTests.Module_CheckpointsItsTracks_AndRestoresThemAfterRestart` |
+| R22 (`TrackMotion.Predict`) | `Contracts/TrackMotionTests.Predict_MovesAlongTheCourseBySpeedTimesElapsedTime`, `Predict_AtTheMeasuredTimeOrWithoutSpeed_ReturnsTheTrackPosition`, `Predict_ReturnsNothing_WhenTheVelocityIsUnknown` |
+| R23 (background registration/retry; `Unavailable` before) | `TrackIngressTests.Register_WithAnInvalidDescriptor_ThrowsArgumentException`, `Register_WithAValidDescriptor_ReturnsASinkBoundToTheSource`, `Register_TheSameSourceIdAgain_ReplacesTheEarlierSink_WhichStopsAcceptingPublishes`; `Tests/Core/CoreAIS.Tests/AisAdapterTests.RunningAdapter_NormalizesAndForwardsReportsAndHealthToTracks`, `Sequence_IsCheckpointedAcrossRestarts_AndUnsupportedStateIsRejected`; `Tests/Core/CoreRadar.Tests/RadarAdapterTests.Adapter_IsUnavailableUntilStarted_ThenForwardsReportsAndHealth`, `Sequence_IsCheckpointedAcrossRestarts_AndUnsupportedStateIsRejected`; `TracksModuleTests.Publisher_Register_ValidatesTheDescriptor_AndReturnsASinkBoundToTheSource` |
+| R24 (source/Tracks independence; reload pick-up/drop) | `TracksModuleTests.TracksModule_RunsCorrectly_WithNoSourceEverRegistering`; `TrackPipelineIntegrationTests.AisAndRadar_OfOneVessel_FuseIntoOneTrack_WhichSurvivesReload_AndOutlivesEitherSource`, `WithoutTracks_TheTrackSensorsAreBlockedAndSonarIsUnaffected_ThenTheyRecover` |
+| R25 (AIS descriptor; Radar interval from rotation rate) | `Tests/Core/CoreRadar.Tests/RadarAdapterTests.DescriptorFor_DerivesTimingsFromTheRotationRate_ScalingUpOnlyWhenSlow`, `SetAntennaRotationRate_ReRegistersTheDefaultChannelsDescriptorWithTheNewInterval` |
+| R26 (bounded queue; Degraded/Healthy) | `TrackIngressTests.Publish_WhenASourcesQueueIsFull_DropsTheOldestReportAndCountsItInsteadOfBlocking`, `TrackSystemHealth_BecomesDegraded_WhileAQueueIsDropping_AndRecoversAfterTenSecondsWithoutDrops` |
+| R27 (consumers keep working against the reshaped `Track`) | `Contracts/TrackReplicaTests` (all 11 cases, notably `ABearingTrack_WithNoPositionAndANonNullBearing_FlowsThroughSnapshotAndChanges`); `Tests/Core/CoreDisplay.Tests/TrackLayerTests` (all); `TrackPipelineIntegrationTests.AisAndRadar_OfOneVessel_FuseIntoOneTrack_WhichSurvivesReload_AndOutlivesEitherSource` |
+| R28 (real-runtime end to end) | `TrackPipelineIntegrationTests.AisAndRadar_OfOneVessel_FuseIntoOneTrack_WhichSurvivesReload_AndOutlivesEitherSource`, `SourceDisconnect_IsVisibleInTheFeed_AndAnObservationRestoresIt`, `WithoutTracks_TheTrackSensorsAreBlockedAndSonarIsUnaffected_ThenTheyRecover` |
+| R29 (concurrent sources, no starvation) | `TrackIngressTests.ConcurrentSources_EachKeepTheirOwnOrder_AndNoneStarvesTheOthers` |
+| R30 (per-source statistics) | `TrackIngressTests.SourceStatistics_ExposeReceivedCreatedUpdatedRejectedDroppedQueueDepthAndLastRejection` |
+| R31 (throughput baseline, measurement not a gate) | `TrackIngressTests.ThroughputBaseline_IsMeasuredAtOneThousandTracks_AsAMeasurementNotAGate` |
+| R32 (radar position conversion from own-ship pose) | `Tests/Core/CoreRadar.Tests/RadarAdapterTests.TrueBearingWithPose_ProjectsAPositionAndKeepsTheMeasurement`, `RelativeBearing_UsesThePlatformHeading`, `WithoutAPoseOrWithARelativeBearingAndNoHeading_TheReportIsRejectedWithAProblem` |
+| R33 (Bearing track creation) | `TrackBearingTests.BearingOnlyReport_ThatCorrelatesWithNothing_CreatesABearingTrack`, `BearingTrack_AgesAndIsRemoved_LikeAnyOtherTrack_AndItsNumberIsRetired` |
+| R34 (bearing-to-point/hybrid correlation) | `TrackBearingTests.BearingReport_ThatCorrelatesWithExactlyOnePointTrack_JoinsItAsAContribution`, `BearingReport_AmbiguousBetweenTwoTracks_StaysStandalone_AndJoinsOnceTheAmbiguityClears`, `BearingTracks_NeverCorrelateWithEachOther` |
+| R35 (bearing refines only when AIS-only; splits off) | `TrackBearingTests.BearingContribution_RefinesThePoint_WhenTheOnlyActiveRangedContributionIsAis`, `BearingContribution_DoesNotRefineThePoint_WhileARadarContributionIsActive`, `BearingContribution_ThatStopsAgreeingForTheConfirmationCount_SplitsOffAsABearingTrack`; `TrackEstimatorTests.UpdateBearing_WithAnActiveRangedContribution_NudgesThePositionTowardTheBearingLine`, `UpdateBearing_WithoutAnActiveRangedContribution_RecordsTheBearingButNeverMovesThePosition` |
+| R36 (kind changes; hybrid extrapolation) | `TrackBearingTests.ABearingTrackWhoseSourceReportsARange_BecomesAPointTrack_KeepingItsNumber`, `ATrackWhoseRangedContributionsAllStop_WhileABearingContributionIsActive_BecomesHybrid`, `AHybridTrack_BecomesPointAgain_WhenARangedReportArrives`; `TrackEstimatorTests.Predict_WithoutMeasurements_GrowsPositionUncertaintyMonotonically_ForHybridExtrapolation`; `Contracts/TrackMotionTests.Predict_ReturnsNothing_ForABearingTrack` |
+| R37 (Display bearing line) | `Tests/Core/CoreDisplay.Tests/TrackLayerTests.BearingLines_IncludeBearingAndHybridTracksOnly_StyledByEachTracksOwnState` |
+| R38 (per-module hardware configuration file) | `Tests/Core/CoreRadar.Tests/RadarHardwareConfigurationTests.LoadChannels_WithNoConfigurationFile_ReturnsOneImplicitDefaultChannel` |
+| R39 (per-channel descriptor/source ID; rejects an unknown channel) | `Tests/Core/CoreRadar.Tests/RadarAdapterTests.SourceIdFor_NamesTheDefaultChannelPlainly_AndOthersWithTheirOwnChannelId`, `Submit_WithAChannelIdThatIsNotConfigured_IsRejectedAsInvalid` |
+| R40 (CoreRadar as the concrete multi-channel case) | `Tests/Core/CoreRadar.Tests/RadarHardwareConfigurationTests.LoadChannels_ParsesEachConfiguredChannel_WithItsOwnRotationRate`, `LoadChannels_RejectsDuplicateChannelIds_AsAMalformedFile`, `LoadChannels_RejectsANonPositiveRotationRate_AsAMalformedFile`; `RadarAdapterTests.SetAntennaRotationRate_OnAnUnconfiguredChannel_ThrowsArgumentException` |
+
+Every row above is a real, passing test as of the final run; none is
+against a stub. R32 predates this rework (carried over) and was not
+re-tested here beyond what `RadarAdapterTests` already covers.
+
+**Known gaps and follow-ups** (replaces the older
+[m1-e-track-pipeline.md](m1-e-track-pipeline.md)'s own "Known gaps and
+follow-ups", which this rework supersedes):
+
+- **Display does not draw the bearing line's pixels yet.** `ChartViewport.BearingLines`
+  (R37) exposes each Bearing/Hybrid track's geographic bearing-line data
+  (own-ship position, true bearing, state), real and tested, but there is
+  still no chart projection or canvas (M1-D) to actually draw it, or any
+  other track symbol, on screen. Same gap as the pre-rework pipeline, not
+  introduced here.
+- **R31's throughput baseline is a correctness test, not a timed
+  measurement.** `ThroughputBaseline_IsMeasuredAtOneThousandTracks_AsAMeasurementNotAGate`
+  proves 1,000 tracks' worth of reports are all processed correctly; it
+  does not yet record an actual reports-per-second rate as data. Turning it
+  into a real timed measurement is still open (noted since slice 4).
+- **The starting values in 21.4 are unvalidated against real sensor data.**
+  The 200 m join/split distance, the per-source queue sizing (AIS 1,000 and
+  radar 500 reports/s declared peaks), the process noise, the gate
+  chi-squares and the direction-finder bearing uncertainty are all
+  documented starting points the plan itself flags as "tuned later" once
+  real recordings or hardware are available (21.4's own "Note" column).
+  Nothing here changes that; this close-out does not attempt the tuning.
+- **No real device protocol or recorded-file replay transport exists.**
+  Adapters still accept reports pushed through their input feature only;
+  AIS NMEA/radar protocol selection (master plan section 9) and the
+  sensor-simulators feature (planned, tests not yet started) are what will
+  eventually feed them for real. Same gap as the pre-rework pipeline.
+- **A module's background pump/connector discards in-flight queued items
+  on stop**, same as the pre-rework relay: `TrackIngress.StopAsync` and
+  `TrackSourceConnector.StopAsync` cancel their loops immediately rather
+  than draining what is still queued. Acceptable per the plan's reload
+  design (21.7: "a generation reload stops every module first, so a sink
+  reference cannot outlive Tracks"), not revisited here.
+- **CoreSonar is still not a track source and has no hardware-configuration
+  file reader of its own** (deferred in 21.13: civilian `Core.Sonar` is not
+  a track source, T2). `CoreRadar`'s per-channel hardware-configuration
+  mechanism (R38 to R40) exists and is tested; giving `CoreSonar` the same
+  delivery mechanism for its own civilian channels (echo sounder, NDS
+  sonar) without wiring them to Tracks is still open, per R40's own text.
+- **EW/CMS bearing sources are out of scope.** Bearing association (R34)
+  sits behind an internal seam specifically so CmsTracks can supply a
+  different method for EW bearings later (CMS backlog); Core never
+  cross-fixes bearings from one ship, by design.
+- **M1-F (Navigation) has not started.** R32's radar-to-position conversion
+  and R37's bearing line both fall back to the sensor report's own-ship
+  pose until Navigation exists to supply a better one; this is expected,
+  not a defect.
+
+**Status.** M1-E rework (slices 1 to 6) is implemented, documented and
+passing on Windows locally, with the slice 5 PR's CI green on Windows, Arch
+Linux and RHEL-compatible containers. Presented to the user for review and
+acceptance; M1-E is complete once accepted and the PR is merged.

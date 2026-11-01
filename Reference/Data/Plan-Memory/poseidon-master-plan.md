@@ -11,10 +11,11 @@ Status: M1-A (host foundation) is complete for its automated cross-platform
 gate. M1-B (CoreUI/Display viewport boundary) is merged and passed
 cross-platform CI. M1-E (track pipeline) is implemented and verified on Windows
 as single-source tracks; its acceptance is on hold because the fusion
-requirements confirmed on 2026-10-26 replace parts of it. That rework's slices
-1 to 4 are accepted (slice 4 on 2026-10-28, with the adapter rewire it
-deferred carried into slice 5); slices 5 and 6 have not started. This is not
-a certification claim.
+requirements confirmed on 2026-10-26 replace parts of it. That rework's
+slices 1 to 6 are all accepted or done (slice 5 committed as `ee0e486`;
+slice 6's close-out presented 2026-10-31, with the PR's cross-platform CI
+green on Windows, Arch Linux and RHEL-compatible), pending the user's
+acceptance of slice 6 and the PR merge. This is not a certification claim.
 
 ## How this documentation is organized
 
@@ -36,7 +37,7 @@ All files are in `Reference/Data/Plan-Memory/`.
 | [m1-b-ui-and-viewport.md](features/m1-b-ui-and-viewport.md) | M1-B | Done; merged after cross-platform CI |
 | [m1-c-chart-data-pipeline.md](features/m1-c-chart-data-pipeline.md) | M1-C | Not started; no plan approved |
 | [m1-e-track-pipeline.md](features/m1-e-track-pipeline.md) | M1-E (as built) | Implemented and verified on Windows; acceptance on hold pending the rework |
-| [m1-e-track-fusion.md](features/m1-e-track-fusion.md) | M1-E (rework) | Plan approved 2026-10-26 (bearing tracks in Core added) and amended 2026-10-28 (multi-sensor-channel modules, 21.13); slices 1 to 4 accepted (slice 4 on 2026-10-28); the adapter rewire it deferred carries into slice 5; slices 5 to 6 not started |
+| [m1-e-track-fusion.md](features/m1-e-track-fusion.md) | M1-E (rework) | Plan approved 2026-10-26 (bearing tracks in Core added) and amended 2026-10-28 (multi-sensor-channel modules, 21.13); slices 1 to 5 accepted and committed; slice 6 (close-out) done and presented 2026-10-31, PR CI green on all three platforms, pending acceptance and merge |
 | [cms-backlog.md](features/cms-backlog.md) | CMS | Documentation only; deferred until the civilian side is complete |
 | [sensor-simulators.md](features/sensor-simulators.md) | Supporting infrastructure | Plan approved 2026-10-27; tests may proceed alongside M1-E, code waits until M1-E is done |
 
@@ -262,7 +263,7 @@ working on M1. Each work package is a feature (or several) developed under
 | M1-B: UI and viewport | M1-A | CoreUI owns normal UI; Display contributes empty viewport and layer API; UI/Display reload without restarting Core; diagnostics/recovery remain available | Done |
 | M1-C: Chart-data pipeline | M1-A | Audit specifications/resources, pin fixture versions; Charts decodes a real base cell; verify metadata, attributes, topology and malformed-input diagnostics | Not started |
 | M1-D: Integrated chart view | M1-B, M1-C | Display draws Charts data; pan/zoom, locked base, overlays, contour slider and feature inspection; demonstrate Charts/Display provider replacement | Not started |
-| M1-E: Track pipeline | M1-A; UI integration needs M1-B | Tracks contracts/manager plus AIS/Radar adapter boundaries (Sonar is not a track source); recorded/simulated observations produce managed tracks and Display updates; lifecycle, resync and reload tests; fusion, per-source timings and queue ingress (rework) | Fusion rework in progress: slices 1 to 4 of 6 accepted |
+| M1-E: Track pipeline | M1-A; UI integration needs M1-B | Tracks contracts/manager plus AIS/Radar adapter boundaries (Sonar is not a track source); recorded/simulated observations produce managed tracks and Display updates; lifecycle, resync and reload tests; fusion, per-source timings and queue ingress (rework) | Fusion rework: all 6 slices done; close-out presented 2026-10-31, pending acceptance and PR merge |
 | M1-F: Navigation functions | M1-E | Own-ship state and tested CPA/TCPA; Display annotations; unavailable/stale/degenerate-motion behavior is explicit; a fault when own-ship position or heading is unavailable | Not started |
 | M1-G: Integration gate | M1-D, M1-E, M1-F | Windows/Arch Linux/RHEL publish and native desktop smoke tests (RHEL with SELinux enforcing); actual civilian module suites; dependency, override and hot-reload failure tests across the integrated application | Not started |
 
