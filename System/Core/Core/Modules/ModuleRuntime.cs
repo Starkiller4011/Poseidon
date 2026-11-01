@@ -41,17 +41,23 @@ public sealed class ModuleRuntime : IModuleHost, IAsyncDisposable
     private readonly object shortcutGate = new();
     private readonly List<ShortcutRegistration> shortcuts = [];
     private string? activeShortcutScope;
+    // M1-I: where GetLog's shared sink writes its log file; defaults to next to the host executable,
+    // like every other "found next to its own assembly" deployment setting. Not wired to GetLog yet
+    // (Step 2 scaffolding only — GetLog still inherits IModuleHost's throwing default).
+    private readonly string logDirectory;
     public RuntimeStatus Status => Volatile.Read(ref status);
     internal WeakReference[] RetiredContexts => retired.Select(r => r.Context).ToArray();
     internal string CacheDirectory => cacheDirectory;
+    internal string LogDirectory => logDirectory;
 
     public ModuleRuntime(string? modulesDirectory = null, Action? shutdown = null, TimeSpan? lifecycleTimeout = null,
-        IEnumerable<ExtensionPoint>? additionalHostPoints = null)
+        IEnumerable<ExtensionPoint>? additionalHostPoints = null, string? logDirectory = null)
     {
         hostPoints = [.. ExtensionPoints.Host, .. additionalHostPoints ?? []];
         this.modulesDirectory = Path.GetFullPath(
             modulesDirectory ?? Path.Combine(AppContext.BaseDirectory, "modules"));
         cacheDirectory = Path.Combine(Path.GetTempPath(), "Poseidon", Guid.NewGuid().ToString("N"));
+        this.logDirectory = Path.GetFullPath(logDirectory ?? AppContext.BaseDirectory);
         this.shutdown = shutdown ?? (() => { });
         this.lifecycleTimeout = lifecycleTimeout ?? TimeSpan.FromSeconds(10);
         if (this.lifecycleTimeout <= TimeSpan.Zero)

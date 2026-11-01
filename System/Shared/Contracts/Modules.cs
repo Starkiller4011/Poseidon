@@ -88,6 +88,13 @@ public interface IModuleHost
     // window it owns) once per key press. Invokes the registration matching the active scope, or a
     // global (null-scope) registration, and returns whether anything was invoked.
     bool DispatchShortcut(UiKey key, UiKeyModifiers modifiers) => throw new NotImplementedException();
+
+    // M1-I (I1, I2): a plain host capability like the members above, not routed through InvokeAsync, so
+    // it works from StartAsync/StopAsync too. category is free text; every Core module's convention is
+    // its own module ID ("Core.UI", "Core.Tracks", etc.). Defaults throw, so an IModuleHost that does not
+    // implement logging (every existing test double) keeps compiling unchanged; ModuleRuntime is the one
+    // real implementation.
+    ILog GetLog(string category) => throw new NotImplementedException();
 }
 
 // Framework-independent key representation (M1-H, H13 to H16): Poseidon.Contracts stays free of Avalonia

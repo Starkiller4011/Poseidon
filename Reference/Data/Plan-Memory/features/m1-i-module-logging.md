@@ -1,7 +1,7 @@
 # M1-I: Module logging
 
 Milestone: M1-I (new; depends on M1-A)
-Status: Awaiting plan approval
+Status: Awaiting test approval
 
 ## Problem and scope
 
@@ -205,11 +205,49 @@ None remaining. Ready for the Step 1 gate.
 
 | Requirement | Test | Failing run (Step 2) | Passing run (Step 3) |
 |---|---|---|---|
+| I1 | `ModuleRuntimeTests.GetLog_WorksFromStartAsyncAndStopAsync_WhereFeatureCallsAreRejected`, [Core.Tests](../../../../Tests/Core/Core.Tests/ModuleLoggingTests.cs) (compiles against the real `ILog`/`LogLevel`/`GetLog` signatures; no logging package referenced anywhere) | `Assert.True` failure — `ReloadAsync()` returns `false` (`GetLog`'s `NotImplementedException` fails the fixture's `StartAsync`), 2026-11-01 | |
+| I2 | Same test as I1 | Same failure, 2026-11-01 | |
+| I3 | `LoggingConfigurationTests.ResolveMinimumLevel_WithNoFileAndNoOverride_DefaultsToInformation`, `_WithAValidFile_UsesItsMinimumLevel`, `_WithAMalformedOrUnrecognizedFile_FallsBackToInformation_NeverThrows`, [Core.Tests](../../../../Tests/Core/Core.Tests/LoggingConfigurationTests.cs) | `NotImplementedException` from the stub, 2026-11-01 | |
+| I4 | `LogSinkTests.Write_BelowTheMinimumLevel_ProducesNoOutputAtAll`, [Core.Tests](../../../../Tests/Core/Core.Tests/LogSinkTests.cs) | `NotImplementedException` from the stub, 2026-11-01 | |
+| I5 | `LogSinkTests.Write_AtOrAboveTheMinimumLevel_AppearsOnTheConsoleAndInTheFile`, `Write_IncludesATimestamp` | `NotImplementedException`, 2026-11-01 | |
+| I6 | `LogSinkTests.Write_AtOrAboveTheMinimumLevel_AppearsOnTheConsoleAndInTheFile` | `NotImplementedException`, 2026-11-01 | |
+| I7 | `LogSinkTests.Write_WhenTheFileCannotBeWritten_StillWritesTheConsoleAndDoesNotThrow` | `NotImplementedException`, 2026-11-01 | |
+| I8 | `ModuleRuntimeTests.Report_RoutesThroughTheSameLoggingFacility_NotJustConsoleError`, [Core.Tests](../../../../Tests/Core/Core.Tests/ModuleLoggingTests.cs). The `App.axaml.cs` half of this requirement has no existing automated test harness for the `App` class (none exists today) and is verified by code review in Step 3, not an xUnit test | `Assert.Single` failure — no log file is ever created (`Report` does not call `GetLog` yet), 2026-11-01 | |
+| I9 | No new test; guarded by every existing test that already asserts on `RuntimeStatus.Diagnostics` (e.g. `ModuleLifecycleTests.InvalidFeatureValue_IsReportedWithoutActivation`), all still passing, since nothing in this feature touches that code path | N/A (regression guard, not new behavior) | |
+| I10 | `LogSinkTests.Write_WithAnException_IncludesItsMessageAndStackTrace` | `NotImplementedException`, 2026-11-01 | |
+| I11 | `LoggingConfigurationTests.ResolveMinimumLevel_WithAnEnvironmentOverride_TakesPrecedenceOverTheFile`, `_WithAnUnrecognizedEnvironmentOverride_FallsBackToTheFile` | `NotImplementedException`, 2026-11-01 | |
+| I12 | None (IDE launch configuration; verified manually in Step 3, not by an automated test — see Requirements) | N/A | |
+
+All new [Core.Tests](../../../../Tests/Core/Core.Tests) cases (18: 11
+`LoggingConfigurationTests` theory cases, 5 `LogSinkTests`, 2
+`ModuleLoggingTests`) were run on Windows, 2026-11-01, and confirmed
+failing for the stated reason, not from a test-setup bug. `dotnet build
+Poseidon.slnx`: no warnings or errors. `dotnet test Poseidon.slnx
+-maxCpuCount:1`: `Core.Tests` is the only project reporting "Test Run
+Failed" (141 cases: 123 pre-existing, unaffected; 18 new, all failing as
+above); every other project reports "Test Run Successful" with zero
+failures, including every other Core module's own test project.
+
+**Production additions this step are compile-only, with no behavior**,
+per the development-workflow rule: `ILog`/`LogLevel`/`LogExtensions` are
+real (no behavior to stub); `IModuleHost.GetLog` defaults to
+`throw new NotImplementedException()` (so every existing `IModuleHost`
+test double keeps compiling unchanged); `LoggingConfiguration.ResolveMinimumLevel`
+and `LogSink.Write` are the same kind of stub; `ModuleRuntime` gained an
+unused `logDirectory` constructor parameter (`LogDirectory` internal
+property) for Step 3 to wire up, and `GetLog`/`Report` are themselves
+untouched. `FixtureModule` (a test fixture, not production code) gained a
+real `UseLogDuringStartAndStop` flag so I1/I2 can be exercised through a
+real deployed module's lifecycle methods.
 
 ## Status and follow-ups
 
-Planning, ready to present for the Step 1 gate. Known follow-ups,
-explicitly out of scope for this pass: log file rotation/retention;
-structured/machine-parseable output; shipping logs to an external
-aggregator; per-module (rather than global) verbosity; CMS modules
-(backlog, not started).
+Step 1 (plan) approved. Step 2 (tests) done: every requirement I1 to I12
+has at least one test (I9 by regression guard, I12 by manual verification,
+as noted above), every test traces to a requirement (see the ledger
+above), and every new test was confirmed failing for the right reason on
+Windows, 2026-11-01. Awaiting the user's approval of the tests before Step
+3 (code) starts. Known follow-ups, explicitly out of scope for this pass:
+log file rotation/retention; structured/machine-parseable output; shipping
+logs to an external aggregator; per-module (rather than global) verbosity;
+CMS modules (backlog, not started).
