@@ -20,9 +20,9 @@ as of 2026-11-01, awaiting the user's acceptance to close out. M1-C
 (chart-data pipeline) has a Step 1 plan revised after a full audit of the
 IHO documents and submodules (normative material complete, fixtures moved
 to S-101 2.0.0), approved 2026-11-01 with an amendment for C27; Step 2
-tests approved; Step 3 code done 2026-11-01, its gate items (three test
-corrections, a managed store in place of SQLite) approved; awaiting the
-user's acceptance to close out. Sensor-simulators (plan approved 2026-10-27) is
+tests approved; Step 3 code done 2026-11-01 and merged. Its follow-on, the
+chart inbox with Debug chart staging, has its code done and passing, at
+the Step 3 gate. Sensor-simulators (plan approved 2026-10-27) is
 deferred by the user's explicit choice on 2026-11-01: no further work on it
 until picked back up. This is not a certification claim.
 
@@ -45,7 +45,8 @@ All files are in `Reference/Data/Plan-Memory/`.
 |---|---|---|
 | [m1-a-host-and-module-loading.md](features/m1-a-host-and-module-loading.md) | M1-A | Done for the automated gate; native Linux desktop smoke tests deferred to M1-G |
 | [m1-b-ui-and-viewport.md](features/m1-b-ui-and-viewport.md) | M1-B | Done; merged after cross-platform CI |
-| [m1-c-chart-data-pipeline.md](features/m1-c-chart-data-pipeline.md) | M1-C | Step 1 plan revised 2026-11-01 after a full documentation and fixture audit (normative material complete; fixtures moved to S-101 2.0.0; 37 requirements); plan approved 2026-11-01. Step 2 tests approved. Step 3: code done; gate items approved (test corrections D5-D7, managed store instead of SQLite); awaiting acceptance |
+| [m1-c-chart-data-pipeline.md](features/m1-c-chart-data-pipeline.md) | M1-C | Step 1 plan revised 2026-11-01 after a full documentation and fixture audit (normative material complete; fixtures moved to S-101 2.0.0; 37 requirements); plan approved 2026-11-01. Step 2 tests approved. Step 3 code done (test corrections D5-D7, managed store instead of SQLite, approved). Done: PR merged 2026-11-01 |
+| [m1-c-chart-inbox.md](features/m1-c-chart-inbox.md) | M1-C (follow-on) | Chart inbox checked at startup (the first production import path) and Debug staging of PowerUp, UKHO and SHOM data into it. Plan and tests approved 2026-11-01 (startup-only scan); Step 3 code done and passing (full solution green); gate item (flat SHOM staging) approved and applied; awaiting acceptance |
 | [m1-e-track-pipeline.md](features/m1-e-track-pipeline.md) | M1-E (as built) | Superseded by the rework below; kept for history only |
 | [m1-e-track-fusion.md](features/m1-e-track-fusion.md) | M1-E (rework) | Done. All 6 slices accepted; PR #7 merged to `dev` 2026-11-01 (`c01fd22`) with green cross-platform CI |
 | [m1-h-ui-extensibility.md](features/m1-h-ui-extensibility.md) | M1-H (new) | Plan and tests approved; Step 3 (code) done and passing (`dotnet test Poseidon.slnx -maxCpuCount:1` green), 2026-11-01. Awaiting the user's acceptance to close out the milestone |
@@ -324,7 +325,7 @@ working on M1. Each work package is a feature (or several) developed under
 |---|---|---|---|
 | M1-A: Host and contracts | None | Restore shared types; keep Core as executable and modules as libraries; hot reload/overrides and repeatable packaging; no-module startup; replacement/removal/rollback tests on Windows, Arch Linux, and RHEL; independent core-module tests | Done for the automated gate |
 | M1-B: UI and viewport | M1-A | CoreUI owns normal UI; Display contributes empty viewport and layer API; UI/Display reload without restarting Core; diagnostics/recovery remain available | Done (its diagnostics/reload/exit panel is later removed from CoreUI's shell entirely by M1-H, which also refactors most of its layout code) |
-| M1-C: Chart-data pipeline | M1-A | Audit specifications/resources, pin fixture versions; Charts decodes a real base cell; verify metadata, attributes, topology and malformed-input diagnostics | Code done 2026-11-01; gate items approved; awaiting acceptance |
+| M1-C: Chart-data pipeline | M1-A | Audit specifications/resources, pin fixture versions; Charts decodes a real base cell; verify metadata, attributes, topology and malformed-input diagnostics | Pipeline done and merged 2026-11-01; chart inbox follow-on at the Step 3 (code) gate |
 | M1-D: Integrated chart view | M1-B, M1-C | Display draws Charts data; pan/zoom, locked base, overlays, contour slider and feature inspection; demonstrate Charts/Display provider replacement | Not started |
 | M1-E: Track pipeline | M1-A; UI integration needs M1-B | Tracks contracts/manager plus AIS/Radar adapter boundaries (Sonar is not a track source); recorded/simulated observations produce managed tracks and Display updates; lifecycle, resync and reload tests; fusion, per-source timings and queue ingress (rework) | Done. Fusion rework merged 2026-11-01 (PR #7, `c01fd22`) |
 | M1-F: Navigation functions | M1-E | Own-ship state and tested CPA/TCPA; Display annotations; unavailable/stale/degenerate-motion behavior is explicit; a fault when own-ship position or heading is unavailable | Not started |

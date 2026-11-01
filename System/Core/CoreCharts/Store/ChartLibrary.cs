@@ -97,15 +97,20 @@ public sealed class ChartLibrary : IChartLibrary, IAsyncDisposable
     private readonly IS101UpdateApplier applier = new S101UpdateApplier();
     private ChartSnapshot? current;
     private volatile bool disposed;
+    private volatile ILog? log;
 
     // The store is opened on first use, so constructing the library (at module registration) touches no files.
     public ChartLibrary(ChartLibraryOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         this.options = options;
+        log = options.Log;
         store = new ChartStore(options.DatabasePath);
         cache = new DatasetCache(Math.Max(0, options.CacheCapacity));
     }
+
+    // The module builds the library at registration, before the host's log is available; StartAsync supplies it.
+    internal void UseLog(ILog? hostLog) => log = hostLog ?? options.Log;
 
     public ChartSnapshot Current => Volatile.Read(ref current) ?? Open();
 
@@ -160,7 +165,7 @@ public sealed class ChartLibrary : IChartLibrary, IAsyncDisposable
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            options.Log?.Error($"Stored support file {key} cannot be read.", e);
+            log?.Error($"Stored support file {key} cannot be read.", e);
             return new SupportFileResolution(null, new ChartDiagnostic(ChartDiagnosticSeverity.Error,
                 ChartDiagnosticCodes.StoreUnreadable, $"The stored copy of {reference} cannot be read: {e.Message}", key));
         }
@@ -215,7 +220,7 @@ public sealed class ChartLibrary : IChartLibrary, IAsyncDisposable
             catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException
                                           or InvalidDataException or NotSupportedException or ArgumentException)
             {
-                options.Log?.Error($"The chart store manifest {store.ManifestPath} cannot be read; it is set aside and the library starts empty.", e);
+                log?.Error($"The chart store manifest {store.ManifestPath} cannot be read; it is set aside and the library starts empty.", e);
                 SetAsideUnreadableManifest();
                 snapshot = Empty();
             }
@@ -236,7 +241,7 @@ public sealed class ChartLibrary : IChartLibrary, IAsyncDisposable
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            options.Log?.Warning("Unreferenced chart store files could not be removed.", e);
+            log?.Warning("Unreferenced chart store files could not be removed.", e);
         }
         return snapshot;
     }
@@ -253,7 +258,7 @@ public sealed class ChartLibrary : IChartLibrary, IAsyncDisposable
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            options.Log?.Error("The unreadable chart store manifest could not be set aside; the next import replaces it.", e);
+            log?.Error("The unreadable chart store manifest could not be set aside; the next import replaces it.", e);
         }
     }
 
@@ -283,7 +288,7 @@ public sealed class ChartLibrary : IChartLibrary, IAsyncDisposable
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
         {
-            options.Log?.Error($"Chart {cell.Summary.DatasetName} cannot be rebuilt from the chart store.", e);
+            log?.Error($"Chart {cell.Summary.DatasetName} cannot be rebuilt from the chart store.", e);
             return null;
         }
     }
@@ -409,6 +414,16 @@ public sealed class ChartLibrary : IChartLibrary, IAsyncDisposable
                 return true;
             }
 
+            // Bytes already in the cell's stored chain were applied before; importing them again changes nothing (CI4).
+            var name = Path.GetFileNameWithoutExtension(file);
+            var hash = ChartStore.Hash(data);
+            if (cells.TryGetValue(name, out var installed) && installed.Chain.Any(f => f.Sha256 == hash))
+            {
+                diagnostics.Add(new ChartDiagnostic(ChartDiagnosticSeverity.Information, ChartDiagnosticCodes.AlreadyInstalled,
+                    $"{file} is already installed in {name}; it was not imported again.", file));
+                return Report(ImportStage.LineageApplied, path);
+            }
+
             var fileDiagnostics = new List<ChartDiagnostic>();
             try
             {
@@ -442,7 +457,7 @@ public sealed class ChartLibrary : IChartLibrary, IAsyncDisposable
             catch (Exception e) when (e is not OperationCanceledException and not OutOfMemoryException)
             {
                 // The decoder reports malformed input itself; this is a defect, kept from failing the import.
-                library.options.Log?.Error($"Decoding {file} failed unexpectedly.", e);
+                library.log?.Error($"Decoding {file} failed unexpectedly.", e);
                 return new DecodeResult(DecodeStatus.Rejected, null,
                 [
                     new ChartDiagnostic(ChartDiagnosticSeverity.Error, ChartDiagnosticCodes.DatasetMalformed, $"{file} could not be decoded: {e.Message}", file)
@@ -530,7 +545,6 @@ public sealed class ChartLibrary : IChartLibrary, IAsyncDisposable
         private void ImportSupportFile(ExchangeSetEntry entry, SignatureVerifier signatures)
         {
             var key = SupportKey(entry.ResolvedPath);
-            supportChanged = true;
             byte[] data;
             try
             {
@@ -540,15 +554,24 @@ public sealed class ChartLibrary : IChartLibrary, IAsyncDisposable
             {
                 diagnostics.Add(new ChartDiagnostic(ChartDiagnosticSeverity.Warning, ChartDiagnosticCodes.SupportFileMissing,
                     $"Support file {key} is listed in the exchange catalogue but missing from the exchange set.", key));
-                supportFiles[key] = new StoredSupportFile(key, SupportFileStatus.Missing, null);
+                Keep(new StoredSupportFile(key, SupportFileStatus.Missing, null));
                 return;
             }
             var signature = signatures.Check(entry.Signature, data, key);
             if (signature.Diagnostic is { } found)
                 diagnostics.Add(found);
-            supportFiles[key] = signature.Rejected
+            Keep(signature.Rejected
                 ? new StoredSupportFile(key, SupportFileStatus.SignatureInvalid, null)
-                : new StoredSupportFile(key, SupportFileStatus.Stored, library.store.Put(data));
+                : new StoredSupportFile(key, SupportFileStatus.Stored, library.store.Put(data)));
+        }
+
+        // A support file identical to the one already kept is no change, so re-importing a set publishes nothing (CI4).
+        private void Keep(StoredSupportFile support)
+        {
+            if (supportFiles.TryGetValue(support.FileName, out var kept) && kept == support)
+                return;
+            supportFiles[support.FileName] = support;
+            supportChanged = true;
         }
 
         // Reports each fileReference or pictorialRepresentation in a changed cell that will not resolve (C37).

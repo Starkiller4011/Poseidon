@@ -6,4 +6,145 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Development chart data (CI10, CI11): Debug builds stage exchange sets into the host's chart inbox
+       (charts/inbox beside the host executable), which Charts imports at startup like any delivered set.
+       The UKHO and SHOM sets are licensed, git-ignored local data, staged only where present; the source
+       folders can be overridden. Release builds stage nothing. -->
+  <PropertyGroup>
+    <DevelopmentChartsData>$(MSBuildThisFileDirectory)..\..\..\Reference\Data\</DevelopmentChartsData>
+    <DevelopmentChartsPowerUpZip>$(DevelopmentChartsData)S-164-Sub-Group\data\ExchangeSets\S-164\Part2\2.2_DatasetLoading\PowerUp\PowerUp.zip</DevelopmentChartsPowerUpZip>
+    <DevelopmentChartsUkhoSource Condition="'$(DevelopmentChartsUkhoSource)' == ''">$(DevelopmentChartsData)S-101\S-101\S-101_GB_Apr26\S100_ROOT</DevelopmentChartsUkhoSource>
+    <!-- Each set below this folder is staged flat as NN-<set folder>/S100_ROOT, numbered in source-path
+         order: that keeps the four sets in edition order, and their full source paths would pass Windows'
+         260-character limit under bin. -->
+    <DevelopmentChartsShomSource Condition="'$(DevelopmentChartsShomSource)' == ''">$(DevelopmentChartsData)S-101\S-101\S-101_FR_June26\S-101_FR_June26\Shom Data 22 June 2026\S-101</DevelopmentChartsShomSource>
+  </PropertyGroup>
+
+  <Target Name="StageDevelopmentCharts" AfterTargets="DeployModule"
+          Condition="'$(Configuration)' == 'Debug' and '$(ModuleDeploymentDirectory)' != ''">
+    <PropertyGroup>
+      <DevelopmentChartsInbox>$([System.IO.Path]::GetFullPath('$(ModuleDeploymentDirectory)\..\charts\inbox'))</DevelopmentChartsInbox>
+    </PropertyGroup>
+
+    <ExtractChangedZipEntries Zip="$(DevelopmentChartsPowerUpZip)" Destination="$(DevelopmentChartsInbox)\S-164-PowerUp"
+                              Condition="Exists('$(DevelopmentChartsPowerUpZip)')" />
+    <Message Importance="high" Condition="!Exists('$(DevelopmentChartsPowerUpZip)')"
+             Text="Development charts: the S-164 PowerUp set was not found at $(DevelopmentChartsPowerUpZip) (is the S-164-Sub-Group submodule checked out?); skipped." />
+
+    <CopyChangedFiles Source="$(DevelopmentChartsUkhoSource)" Destination="$(DevelopmentChartsInbox)\UKHO-GB-Apr26\S100_ROOT"
+                      Condition="Exists('$(DevelopmentChartsUkhoSource)')" />
+    <Message Importance="high" Condition="!Exists('$(DevelopmentChartsUkhoSource)')"
+             Text="Development charts: UKHO data not found at $(DevelopmentChartsUkhoSource); skipped." />
+
+    <StageNumberedExchangeSets Source="$(DevelopmentChartsShomSource)" Destination="$(DevelopmentChartsInbox)\SHOM-FR-June26"
+                               Condition="Exists('$(DevelopmentChartsShomSource)')" />
+    <Message Importance="high" Condition="!Exists('$(DevelopmentChartsShomSource)')"
+             Text="Development charts: SHOM data not found at $(DevelopmentChartsShomSource); skipped." />
+  </Target>
+
+  <!-- Extracts a zip, skipping entries already extracted unchanged. Some IHO zips store entry names with
+       backslashes, which are normalised so Linux does not create literal "a\b" file names. -->
+  <UsingTask TaskName="ExtractChangedZipEntries" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Zip ParameterType="System.String" Required="true" />
+      <Destination ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.IO.Compression" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var root = Path.GetFullPath(Destination) + Path.DirectorySeparatorChar;
+        using (var archive = ZipFile.OpenRead(Zip))
+        {
+            foreach (var entry in archive.Entries)
+            {
+                var name = entry.FullName.Replace('\\', '/');
+                if (name.EndsWith("/"))
+                    continue;
+                var path = Path.GetFullPath(Path.Combine(root, name));
+                if (!path.StartsWith(root, StringComparison.Ordinal))
+                {
+                    Log.LogError("Zip entry escapes the destination folder: " + entry.FullName);
+                    return false;
+                }
+                var existing = new FileInfo(path);
+                if (existing.Exists && existing.Length == entry.Length && existing.LastWriteTimeUtc == entry.LastWriteTime.UtcDateTime)
+                    continue;
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                entry.ExtractToFile(path, true);
+                File.SetLastWriteTimeUtc(path, entry.LastWriteTime.UtcDateTime);
+            }
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <!-- Copies a folder's files, skipping files already copied unchanged; the source's last-write time is
+       kept so the next build can tell. -->
+  <UsingTask TaskName="CopyChangedFiles" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Source ParameterType="System.String" Required="true" />
+      <Destination ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var source = Path.GetFullPath(Source);
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            var target = Path.Combine(Destination, file.Substring(source.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            var from = new FileInfo(file);
+            var to = new FileInfo(target);
+            if (to.Exists && to.Length == from.Length && to.LastWriteTimeUtc == from.LastWriteTimeUtc)
+                continue;
+            Directory.CreateDirectory(Path.GetDirectoryName(target));
+            File.Copy(file, target, true);
+            File.SetLastWriteTimeUtc(target, from.LastWriteTimeUtc);
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <!-- Stages every S100_ROOT folder below Source as Destination\NN-<its parent folder>\S100_ROOT, numbered
+       from 01 in ordinal order of the source paths, skipping files already copied unchanged. Destination is
+       owned by this task: any other folder in it (such as an earlier layout) is removed. -->
+  <UsingTask TaskName="StageNumberedExchangeSets" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Source ParameterType="System.String" Required="true" />
+      <Destination ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Collections.Generic" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var source = Path.GetFullPath(Source);
+        var roots = Directory.EnumerateDirectories(source, "S100_ROOT", SearchOption.AllDirectories)
+            .OrderBy(r => r.Substring(source.Length).Replace('\\', '/'), StringComparer.Ordinal)
+            .ToList();
+        var staged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < roots.Count; i++)
+        {
+            var name = (i + 1).ToString("00") + "-" + Path.GetFileName(Path.GetDirectoryName(roots[i]));
+            staged.Add(name);
+            var targetRoot = Path.Combine(Destination, name, "S100_ROOT");
+            foreach (var file in Directory.EnumerateFiles(roots[i], "*", SearchOption.AllDirectories))
+            {
+                var target = Path.Combine(targetRoot, file.Substring(roots[i].Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                var from = new FileInfo(file);
+                var to = new FileInfo(target);
+                if (to.Exists && to.Length == from.Length && to.LastWriteTimeUtc == from.LastWriteTimeUtc)
+                    continue;
+                Directory.CreateDirectory(Path.GetDirectoryName(target));
+                File.Copy(file, target, true);
+                File.SetLastWriteTimeUtc(target, from.LastWriteTimeUtc);
+            }
+        }
+        if (Directory.Exists(Destination))
+            foreach (var folder in Directory.EnumerateDirectories(Destination).Where(d => !staged.Contains(Path.GetFileName(d))).ToList())
+                Directory.Delete(folder, true);
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
 </Project>

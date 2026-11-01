@@ -125,17 +125,25 @@ accidental regression. Full detail, including the requirement-to-test
 ledger, is in the feature file's Step 3 entry, not repeated here. Gate:
 waiting for the user's acceptance to close out M1-I.
 
-A third feature is also in flight, by the user's explicit choice to start it
-now rather than wait for M1-H/M1-I acceptance:
-[M1-C: Chart-data pipeline](features/m1-c-chart-data-pipeline.md) (depends
-only on M1-A, done). Charts reads real S-101 exchange sets (exchange-set
-catalogue, a bounded ISO 8211 container reader, S-101 feature/geometry
-decoding, base/update lineage, an immutable chart store) and exposes typed
-query results; Display is not touched until M1-D.
+A third feature is in flight:
+[M1-C follow-on: chart inbox and development chart staging](features/m1-c-chart-inbox.md).
+It adds the first production import path, an inbox folder that Charts checks
+and imports from at startup, and makes Debug builds stage the PowerUp, UKHO
+and SHOM data into it. The pipeline it builds on,
+[M1-C: Chart-data pipeline](features/m1-c-chart-data-pipeline.md), is done
+and merged (2026-11-01).
 
 | Step | State | Detail |
 |---|---|---|
-| 3. Code | Done; gate items approved 2026-11-01 | All of Slices 1-5 implemented; test defects D5-D7 corrected as approved; C30 baseline recorded; awaiting acceptance |
+| 1. Plan | Approved 2026-11-01 | 12 requirements (CI1-CI12); the inbox model, startup-only scanning and staged data confirmed by the user |
+| 2. Tests | Approved 2026-11-01 | 31 tests; ledger in the feature file |
+| 3. Code | Done 2026-11-01; gate item approved and applied | All 12 requirements implemented; flat `NN-<set>` SHOM staging (deepest path 217 characters) with its approved test change; CoreCharts 205/205 and the full solution green; awaiting acceptance |
+
+The pipeline's own step history, for reference:
+
+| Step | State | Detail |
+|---|---|---|
+| 3. Code | Done, merged 2026-11-01 | All of Slices 1-5 implemented; test defects D5-D7 corrected as approved; C30 baseline recorded |
 | 2. Tests | Approved 2026-11-01; three corrections proposed | All 37 requirements covered (165 new tests incl. 70 s100tds cases; 9 local-only); every new test fails with `NotImplementedException` except the C27 no-Charts regression guard, which already passes; ledger in the feature file. Gate items: proposed C17 wording change (older-edition update not flagged not-up-to-date) and a CI change to check out three submodules |
 | 1. Plan | Done, approved 2026-11-01 (with its Step 2 amendment) | 37 requirements (C1-C37) across 5 slices; Q1-Q10 all answered; amendment: host-shared `IChartLibrary` contract in `System/Shared/Contracts/Charts.cs` for C27 (C27 reworded); revised 2026-11-01 after auditing the IHO documents and submodules against real bytes, raising Q6 (supported editions), Q7 (signature integrity) and Q8 (XML schemas, answered by the user's download) |
 
@@ -177,7 +185,58 @@ is plan-approved (2026-10-27) but deferred by the user's explicit choice on
 
 ## Last changes made
 
-M1-C Step 3 gate: the user approved the D5-D7 test corrections, the C30/C37
+At the chart-inbox Step 3 gate, the user approved the flat SHOM staging
+layout. Applied:
+- `StageNumberedExchangeSets` stages each set as
+  `SHOM-FR-June26/NN-<set folder>/S100_ROOT` and removes old layouts.
+- The SHOM staging test was updated as approved, and the unused
+  `Staging.ExchangeSetFiles` removed.
+- The real Debug output was restaged; its deepest path is 217 characters.
+
+CoreCharts 205/205; full solution green. Nothing committed.
+
+Earlier, chart-inbox Step 3 was done:
+- Code: `Inbox/ChartInbox.cs`, idempotent re-import in `ChartLibrary`, the
+  startup scan in `ChartsModule`, `StageDevelopmentCharts` in
+  `CoreCharts.csproj`, and a README section.
+- A defect found and fixed in production code: a null host from the shared
+  module contract test.
+- Results: CoreCharts 205/205; full solution green.
+- Gate item: SHOM staged paths reach 275 characters. The proposed flat
+  layout needs one approved test changed.
+
+Nothing committed.
+
+Earlier, the user approved the chart-inbox plan and Step 2 was done:
+- 31 tests in `ChartInboxTests`, `ChartLibraryReimportTests`,
+  `ChartsModuleInboxTests` and `ChartStagingTests`. The staging tests run
+  the target in a child `dotnet msbuild` with an explicit configuration, so
+  they work under CI's Release run.
+- Compile-only stubs: `Inbox/ChartInbox.cs`, `AlreadyInstalled`, and the
+  `ChartsModule(string)` constructor with `ChartsDirectory` and
+  `StartupScan`.
+
+CoreCharts.Tests: 30 of 205 fail, all for missing behaviour. Everything
+else passes. Nothing committed.
+
+Earlier: the M1-C pipeline PR was merged. The user asked for real chart data to be
+available to a built application for testing, by replicating the intended
+production import process. They chose:
+- an inbox folder now, with an operator load command later in M1-D;
+- processed sets left in place, with the store remembering them;
+- PowerUp, UKHO and SHOM data staged by Debug builds.
+
+Drafted [the chart-inbox plan](features/m1-c-chart-inbox.md), then revised
+it when the user decided the inbox is checked only at startup (no runtime
+monitoring, no settle interval); it now has CI1-CI12. One
+finding shaped it: the SHOM sets' folder names sort an edition 2 update
+before its base, and all four catalogues share an issue date, so the plan
+retries sets refused for sequence and makes re-imports idempotent. Plan
+files only; no tests or code. Nothing committed. The local branch is still
+`chart-data-pipeline`, which has been merged; the new work wants a fresh
+branch.
+
+Earlier, M1-C Step 3 gate: the user approved the D5-D7 test corrections, the C30/C37
 count corrections (27 UKHO cells; one truncated InitialPowerUp reference and
 one UKHO typo reference, both reported, never resolved) and the managed
 store in place of SQLite. Applied and rerun; results in the feature file.
@@ -627,10 +686,9 @@ Earlier (before this session; slice 1, now merged):
 2. **Get the user's acceptance of [M1-I's code](features/m1-i-module-logging.md)**
    to close out the milestone; the full passing run is recorded and
    waiting for review. Nothing is committed yet.
-3. **Get the user's acceptance of [M1-C's code](features/m1-c-chart-data-pipeline.md)**
-   to close out the milestone. The Step 3 gate items (held test defects
-   D5-D7, count corrections, managed store) are approved and applied.
-   Nothing is committed yet.
+3. **Get the user's acceptance of [the chart inbox](features/m1-c-chart-inbox.md)**
+   to close out the M1-C follow-on. The gate item (flat SHOM staging) is
+   approved and applied. Nothing is committed yet.
 
 Everything else waiting, unblocked by anything above and not in
 competition with it, per the master plan's milestone table:
